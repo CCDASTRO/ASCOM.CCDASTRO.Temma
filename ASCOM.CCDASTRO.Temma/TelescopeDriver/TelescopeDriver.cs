@@ -15,7 +15,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
     [ProgId("ASCOM.Temma.Telescope")]
     [ServedClassName("Takahashi Temma Telescope Driver")]
     [ClassInterface(ClassInterfaceType.None)]
-    public class Telescope : ReferenceCountedObjectBase, ITelescopeV4, IDisposable
+    public partial class Telescope : ReferenceCountedObjectBase, ITelescopeV4, IDisposable
     {
         internal static string DriverProgId;
         internal static string DriverDescription;
