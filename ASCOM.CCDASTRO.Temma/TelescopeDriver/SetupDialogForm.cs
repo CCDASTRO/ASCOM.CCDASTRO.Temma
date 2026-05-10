@@ -150,5 +150,30 @@ namespace ASCOM.CCDASTROTemma.Telescope
             if ((sign.SelectedItem?.ToString() ?? "") == neg) v = -v;
             return v;
         }
+
+        private void nudParkAzimuth_ValueChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label3_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void optOtaWest_CheckedChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void nudGuideRateDec_ValueChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label12_Click(object sender, EventArgs e)
+        {
+
+        }
     }
 }

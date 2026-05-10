@@ -34,15 +34,39 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public double SiteLatitude { get => ReadDouble("SiteLatitude", 0); set => WriteDouble("SiteLatitude", value); }
         public double SiteLongitude { get => ReadDouble("SiteLongitude", 0); set => WriteDouble("SiteLongitude", value); }
         public double SiteElevation { get => ReadDouble("SiteElevation", 0); set => WriteDouble("SiteElevation", value); }
+        
+        public bool KeepLastSync
+        {
+            get { return ReadBool("KeepLastSync", true); }
+            set { WriteBool("KeepLastSync", value); }
+        }
+
+        public double SyncOffsetRA
+        {
+            get { return ReadDouble("SyncOffsetRA", 0.0); }
+            set { WriteDouble("SyncOffsetRA", value); }
+        }
+
+        public double SyncOffsetDec
+        {
+            get { return ReadDouble("SyncOffsetDec", 0.0); }
+            set { WriteDouble("SyncOffsetDec", value); }
+        }
+
+        public bool ParkCurrentPosition
+        {
+            get { return ReadBool("ParkCurrentPosition", true); }
+            set { WriteBool("ParkCurrentPosition", value); }
+        }
 
         public double ParkAltitude { get => ReadDouble("ParkAltitude", 0); set => WriteDouble("ParkAltitude", value); }
         public double ParkAzimuth { get => ReadDouble("ParkAzimuth", 0); set => WriteDouble("ParkAzimuth", value); }
-        public bool ParkCurrentPosition { get => ReadBool("ParkCurrentPosition", true); set => WriteBool("ParkCurrentPosition", value); }
+        
         public bool UnparkOnReconnect { get => ReadBool("UnparkOnReconnect", false); set => WriteBool("UnparkOnReconnect", value); }
         public bool SendRate { get => ReadBool("SendRate", false); set => WriteBool("SendRate", value); }
 
         public string Orientation { get => ReadString("Orientation", "CounterweightDown"); set => WriteString("Orientation", value); }
-        public bool KeepLastSync { get => ReadBool("KeepLastSync", true); set => WriteBool("KeepLastSync", value); }
+        
         public bool AskAtStart { get => ReadBool("AskAtStart", false); set => WriteBool("AskAtStart", value); }
 
         public double Aperture { get => ReadDouble("Aperture", 0); set => WriteDouble("Aperture", value); }

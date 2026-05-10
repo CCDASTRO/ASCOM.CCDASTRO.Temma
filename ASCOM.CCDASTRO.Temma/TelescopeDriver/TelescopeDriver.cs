@@ -12,10 +12,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
 {
     [ComVisible(true)]
     [Guid("c41150b3-378c-4a3a-a44c-55e99b8c7554")]
-    [ProgId("ASCOM.Temma.Telescope")]
-    [ServedClassName("Takahashi Temma Telescope Driver")]
+    [ProgId("ASCOM.CCDASTROTemma.Telescope")]
+    [ServedClassName("CCDAstro Temma Telescope Driver")]
     [ClassInterface(ClassInterfaceType.None)]
-    public partial class Telescope : ReferenceCountedObjectBase, ITelescopeV4, IDisposable
+    public class Telescope : ReferenceCountedObjectBase, ITelescopeV4, IDisposable
     {
         internal static string DriverProgId;
         internal static string DriverDescription;
@@ -25,6 +25,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private bool isSlewing;
         private bool tracking;
         private bool isParked;
+        private bool pulseGuiding;
 
         private TraceLogger tl;
         private Serial serial;
@@ -34,13 +35,40 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private double currentDeclination;
         private DateTime lastCoordinateUpdate = DateTime.MinValue;
 
+        #region ASCOM Registration
+
+        private const string RegistrationProgId = "ASCOM.CCDASTROTemma.Telescope";
+        private const string RegistrationDescription = "CCDAstro Temma Telescope Driver";
+
+        [ComRegisterFunction]
+        public static void RegisterASCOM(Type t)
+        {
+            using (Profile profile = new Profile())
+            {
+                profile.DeviceType = "Telescope";
+                profile.Register(RegistrationProgId, RegistrationDescription);
+            }
+        }
+
+        [ComUnregisterFunction]
+        public static void UnregisterASCOM(Type t)
+        {
+            using (Profile profile = new Profile())
+            {
+                profile.DeviceType = "Telescope";
+                profile.Unregister(RegistrationProgId);
+            }
+        }
+
+        #endregion
+
         public Telescope()
         {
             Attribute progIdAttr = Attribute.GetCustomAttribute(GetType(), typeof(ProgIdAttribute));
-            DriverProgId = ((ProgIdAttribute)progIdAttr)?.Value ?? "ASCOM.Temma.Telescope";
+            DriverProgId = ((ProgIdAttribute)progIdAttr)?.Value ?? RegistrationProgId;
 
             Attribute servedAttr = Attribute.GetCustomAttribute(GetType(), typeof(ServedClassNameAttribute));
-            DriverDescription = ((ServedClassNameAttribute)servedAttr)?.DisplayName ?? "Takahashi Temma Telescope Driver";
+            DriverDescription = ((ServedClassNameAttribute)servedAttr)?.DisplayName ?? RegistrationDescription;
 
             settings = new DriverSettings(DriverProgId);
             isParked = settings.IsParked;
@@ -68,8 +96,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposedValue)
-                return;
+            if (disposedValue) return;
 
             if (disposing)
             {
@@ -77,12 +104,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 {
                     try
                     {
-                        if (serial.Connected)
-                            serial.Connected = false;
+                        if (serial.Connected) serial.Connected = false;
                     }
-                    catch
-                    {
-                    }
+                    catch { }
 
                     serial.Dispose();
                     serial = null;
@@ -101,17 +125,14 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         #region ITelescopeV4 additions
 
-        public void Connect() => Connected = true;
-
-        public void Disconnect() => Connected = false;
-
+        public void Connect() { Connected = true; }
+        public void Disconnect() { Connected = false; }
         public bool Connecting => false;
-
         public IStateValueCollection DeviceState => new StateValueCollection();
 
         #endregion
 
-        #region ASCOM common methods
+        #region ASCOM Common Methods
 
         public void SetupDialog()
         {
@@ -125,9 +146,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
             {
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
-                    // Reload settings and trace state.
                     settings = new DriverSettings(DriverProgId);
                     tl.Enabled = settings.TraceEnabled;
+                    isParked = settings.IsParked;
                 }
             }
         }
@@ -156,11 +177,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public bool Connected
         {
-            get => connectedState;
+            get { return connectedState; }
             set
             {
-                if (value == connectedState)
-                    return;
+                if (value == connectedState) return;
 
                 if (value)
                     ConnectToMount();
@@ -171,19 +191,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
         }
 
-        public string Description => "Takahashi Temma telescope driver";
-
+        public string Description => RegistrationDescription;
         public string DriverInfo => "Takahashi Temma Telescope Driver (C# port)";
-
         public string DriverVersion => "1.0.0";
-
         public short InterfaceVersion => 4;
-
         public string Name => "Takahashi Temma";
 
         #endregion
 
-        #region Telescope properties
+        #region Telescope Properties
 
         public AlignmentModes AlignmentMode => AlignmentModes.algGermanPolar;
 
@@ -209,13 +225,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public bool Tracking
         {
-            get => tracking;
+            get { return tracking; }
             set
             {
                 CheckConnected("Tracking");
-
-                if (tracking == value)
-                    return;
+                if (tracking == value) return;
 
                 SendCommand(TemmaProtocol.BuildTrackingCommand(value));
                 tracking = value;
@@ -233,7 +247,6 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     double raError = Math.Abs(currentRightAscension - TargetRightAscension);
                     double decError = Math.Abs(currentDeclination - TargetDeclination);
 
-                    // 1 second of RA, 10 arcseconds of Dec.
                     if (raError < (1.0 / 3600.0) && decError < (10.0 / 3600.0))
                         isSlewing = false;
                 }
@@ -243,27 +256,23 @@ namespace ASCOM.CCDASTROTemma.Telescope
         }
 
         public double TargetRightAscension { get; set; }
-
         public double TargetDeclination { get; set; }
 
         public double SiderealTime
         {
             get
             {
-                // Approximate local sidereal time in decimal hours.
                 DateTime utc = DateTime.UtcNow;
                 double jd = utc.ToOADate() + 2415018.5;
                 double d = jd - 2451545.0;
 
                 double gmst = 18.697374558 + 24.06570982441908 * d;
                 gmst %= 24.0;
-                if (gmst < 0.0)
-                    gmst += 24.0;
+                if (gmst < 0.0) gmst += 24.0;
 
                 double lst = gmst + (SiteLongitude / 15.0);
                 lst %= 24.0;
-                if (lst < 0.0)
-                    lst += 24.0;
+                if (lst < 0.0) lst += 24.0;
 
                 return lst;
             }
@@ -271,7 +280,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         #endregion
 
-        #region Slewing and sync
+        #region Slewing and Sync
 
         public void AbortSlew()
         {
@@ -285,9 +294,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
             SlewToCoordinatesAsync(rightAscension, declination);
 
             while (Slewing)
-            {
                 Thread.Sleep(500);
-            }
+
+            if (SlewSettleTime > 0)
+                Thread.Sleep(SlewSettleTime * 1000);
         }
 
         public void SlewToCoordinatesAsync(double rightAscension, double declination)
@@ -304,15 +314,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             isSlewing = true;
         }
 
-        public void SlewToTarget()
-        {
-            SlewToCoordinates(TargetRightAscension, TargetDeclination);
-        }
-
-        public void SlewToTargetAsync()
-        {
-            SlewToCoordinatesAsync(TargetRightAscension, TargetDeclination);
-        }
+        public void SlewToTarget() => SlewToCoordinates(TargetRightAscension, TargetDeclination);
+        public void SlewToTargetAsync() => SlewToCoordinatesAsync(TargetRightAscension, TargetDeclination);
 
         public void SyncToCoordinates(double rightAscension, double declination)
         {
@@ -327,14 +330,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
             currentDeclination = declination;
         }
 
-        public void SyncToTarget()
-        {
-            SyncToCoordinates(TargetRightAscension, TargetDeclination);
-        }
+        public void SyncToTarget() => SyncToCoordinates(TargetRightAscension, TargetDeclination);
 
         #endregion
 
-        #region Connection helpers
+        #region Connection Helpers
 
         private void ConnectToMount()
         {
@@ -342,11 +342,22 @@ namespace ASCOM.CCDASTROTemma.Telescope
             serial.Speed = SerialSpeed.ps19200;
             serial.Connected = true;
 
-            tracking = true;
+            tracking = !settings.TrackingOffOnConnect;
             isSlewing = false;
             lastCoordinateUpdate = DateTime.MinValue;
 
-            LogMessage("Connect", $"Connected to {settings.ComPort}");
+            if (isParked && settings.UnparkOnReconnect)
+            {
+                isParked = false;
+                settings.IsParked = false;
+            }
+
+            if (settings.SendRate)
+            {
+                // Placeholder for future guide rate transmission to mount.
+            }
+
+            LogMessage("Connect", "Connected to " + settings.ComPort);
         }
 
         private void DisconnectFromMount()
@@ -365,10 +376,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CheckConnected("SendCommand");
 
             LogMessage("TX", command);
-
             serial.Transmit(command);
             string response = serial.ReceiveTerminated("#");
-
             LogMessage("RX", response);
 
             return response;
@@ -376,20 +385,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private void UpdateCoordinates()
         {
-            if (!connectedState)
-                return;
-
-            if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0)
-                return;
+            if (!connectedState) return;
+            if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0) return;
 
             try
             {
                 string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
 
-                if (TemmaProtocol.TryParseCoordinates(
-                    response,
-                    out double ra,
-                    out double dec))
+                double ra, dec;
+                if (TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
                 {
                     currentRightAscension = ra;
                     currentDeclination = dec;
@@ -404,26 +408,27 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         #endregion
 
-        #region Utility methods
+        #region Utility Methods
 
         private void CheckConnected(string member)
         {
             if (!connectedState)
-                throw new NotConnectedException($"{DriverDescription} is not connected: {member}");
+                throw new NotConnectedException(DriverDescription + " is not connected: " + member);
         }
 
         private void LogMessage(string identifier, string message)
         {
-            tl?.LogMessage(identifier, message);
+            if (tl != null)
+                tl.LogMessage(identifier, message);
         }
 
         #endregion
 
-        #region Required placeholder members
+        #region Required ITelescopeV4 Members
 
         public double Altitude => 0.0;
         public double ApertureArea => 0.0;
-        public double ApertureDiameter => 0.0;
+        public double ApertureDiameter => settings.Aperture;
         public bool AtHome => false;
         public bool AtPark => isParked;
         public IAxisRates AxisRates(TelescopeAxes axis) => new AxisRates(axis);
@@ -450,24 +455,12 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public bool DoesRefraction { get => false; set { } }
         public EquatorialCoordinateType EquatorialSystem => EquatorialCoordinateType.equTopocentric;
         public void FindHome() { }
-        public double FocalLength => 0.0;
-        public double GuideRateDeclination
-        {
-            get => settings.GuideRateDec;
-            set => settings.GuideRateDec = value;
-        }
-
-        public double GuideRateRightAscension
-        {
-            get => settings.GuideRateRA;
-            set => settings.GuideRateRA = value;
-        }
-
-        private bool pulseGuiding;
-
+        public double FocalLength => settings.FocalLength;
+        public double GuideRateDeclination { get => settings.GuideRateDec; set => settings.GuideRateDec = value; }
+        public double GuideRateRightAscension { get => settings.GuideRateRA; set => settings.GuideRateRA = value; }
         public bool IsPulseGuiding => pulseGuiding;
         public void MoveAxis(TelescopeAxes axis, double rate) { }
-       
+
         public void PulseGuide(GuideDirections direction, int duration)
         {
             CheckConnected("PulseGuide");
@@ -476,13 +469,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 throw new InvalidValueException("Duration must be zero or greater.");
 
             pulseGuiding = true;
-
             try
             {
-                // Placeholder implementation.
-                // The request is logged and the method waits for the specified
-                // duration to emulate pulse guiding behavior.
-                LogMessage("PulseGuide", $"Direction={direction}, Duration={duration} ms");
+                LogMessage("PulseGuide", string.Format("Direction={0}, Duration={1} ms", direction, duration));
                 Thread.Sleep(duration);
             }
             finally
@@ -490,71 +479,37 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 pulseGuiding = false;
             }
         }
+
         public double RightAscensionRate { get => 0.0; set { } }
-        public void SetPark()
-        {
-            // No-op placeholder. Temma mounts do not provide a dedicated park position.
-        }
+        public void SetPark() { }
         public PierSide SideOfPier { get => PierSide.pierUnknown; set { } }
-        public double SiteElevation
-        {
-            get => settings.SiteElevation;
-            set => settings.SiteElevation = value;
-        }
-        public double SiteLatitude
-        {
-            get => settings.SiteLatitude;
-            set => settings.SiteLatitude = value;
-        }
-        public double SiteLongitude
-        {
-            get => settings.SiteLongitude;
-            set => settings.SiteLongitude = value;
-        }
-        public short SlewSettleTime
-        {
-            get => settings.SlewSettleTime;
-            set => settings.SlewSettleTime = value;
-        }
+        public double SiteElevation { get => settings.SiteElevation; set => settings.SiteElevation = value; }
+        public double SiteLatitude { get => settings.SiteLatitude; set => settings.SiteLatitude = value; }
+        public double SiteLongitude { get => settings.SiteLongitude; set => settings.SiteLongitude = value; }
+        public short SlewSettleTime { get => settings.SlewSettleTime; set => settings.SlewSettleTime = value; }
         public void SlewToAltAz(double azimuth, double altitude) { }
         public void SlewToAltAzAsync(double azimuth, double altitude) { }
         public void SyncToAltAz(double azimuth, double altitude) { }
         public DriveRates TrackingRate { get => DriveRates.driveSidereal; set { } }
         public ITrackingRates TrackingRates => new TrackingRates();
         public DateTime UTCDate { get => DateTime.UtcNow; set { } }
-        // ============================================================
-        // 2. PARK() METHOD
-        // ============================================================
-        // Replace your existing Park() method with this version:
 
         public void Park()
         {
             CheckConnected("Park");
-
             isParked = true;
             settings.IsParked = true;
-
             isSlewing = false;
-
             LogMessage("Park", "Mount marked as parked.");
         }
-
-
-        // ============================================================
-        // 3. UNPARK() METHOD
-        // ============================================================
-        // Replace your existing Unpark() method with this version:
 
         public void Unpark()
         {
             CheckConnected("Unpark");
-
             isParked = false;
             settings.IsParked = false;
-
             LogMessage("Unpark", "Mount unparked.");
         }
-
 
         #endregion
     }
