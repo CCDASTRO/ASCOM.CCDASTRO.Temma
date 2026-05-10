@@ -18,10 +18,24 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public SetupDialogForm(string progId) : this()
         {
+            // Force the dialog to appear above applications such as N.I.N.A.
+            this.TopMost = true;
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.ShowInTaskbar = false;
+            this.Shown += SetupDialogForm_Shown;
             settings = new DriverSettings(progId);
             LoadSettings();
-        }
 
+            // Bring the dialog to the front after controls are populated.
+            this.BringToFront();
+            this.Activate();
+        }
+        private void SetupDialogForm_Shown(object sender, EventArgs e)
+        {
+            this.TopMost = true;
+            this.BringToFront();
+            this.Activate();
+        }
         private void LoadSettings()
         {
             if (settings == null) return;

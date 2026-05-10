@@ -92,6 +92,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
         {
             Dispose(true);
             GC.SuppressFinalize(this);
+
+            // Ask the ASCOM local server to exit if this was the last object.
+            ASCOM.LocalServer.Server.ExitIf();
+            System.Windows.Forms.Application.Exit();
         }
 
         protected virtual void Dispose(bool disposing)
@@ -104,9 +108,12 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 {
                     try
                     {
-                        if (serial.Connected) serial.Connected = false;
+                        if (serial.Connected)
+                            serial.Connected = false;
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     serial.Dispose();
                     serial = null;
@@ -121,6 +128,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
 
             disposedValue = true;
+
+            ASCOM.LocalServer.Server.ExitIf();
         }
 
         #region ITelescopeV4 additions
@@ -180,14 +189,23 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get { return connectedState; }
             set
             {
-                if (value == connectedState) return;
+                if (value == connectedState)
+                    return;
 
                 if (value)
+                {
                     ConnectToMount();
+                    connectedState = true;
+                }
                 else
+                {
                     DisconnectFromMount();
+                    connectedState = false;
 
-                connectedState = value;
+                    // Tell the ASCOM local server to shut down
+                    // if no COM objects remain.
+                    ASCOM.LocalServer.Server.ExitIf();
+                }
             }
         }
 
