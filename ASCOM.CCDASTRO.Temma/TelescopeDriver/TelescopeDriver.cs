@@ -1,3 +1,11 @@
+// Updated to resolve:
+// - AxisRates.Add() compile error
+// - AxisRates constructor requiring TelescopeAxes
+// - TemmaMountModel enum integration
+//
+// Note: The frmUnpark.cs duplicate entry error is in the .csproj file,
+// not in Telescope.cs.
+
 using ASCOM;
 using ASCOM.DeviceInterface;
 using ASCOM.LocalServer;
@@ -30,6 +38,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private TraceLogger tl;
         private Serial serial;
         private DriverSettings settings;
+
+        private const double SIDEREAL_RATE_DEG_SEC = 360.0 / 86164.0905;
+        private AxisRates axisRates;
 
         private double currentRightAscension;
         private double currentDeclination;
@@ -93,9 +104,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             Dispose(true);
             GC.SuppressFinalize(this);
 
-            // Ask the ASCOM local server to exit if this was the last object.
-            ASCOM.LocalServer.Server.ExitIf();
-            System.Windows.Forms.Application.Exit();
+            Server.ExitIf();
+            Application.Exit();
         }
 
         protected virtual void Dispose(bool disposing)
@@ -128,16 +138,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
 
             disposedValue = true;
-
-            ASCOM.LocalServer.Server.ExitIf();
+            Server.ExitIf();
         }
 
         #region ITelescopeV4 additions
 
         public void Connect() { Connected = true; }
         public void Disconnect() { Connected = false; }
-        public bool Connecting => false;
-        public IStateValueCollection DeviceState => new StateValueCollection();
+        public bool Connecting { get { return false; } }
+        public IStateValueCollection DeviceState { get { return new StateValueCollection(); } }
 
         #endregion
 
@@ -162,7 +171,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
         }
 
-        public ArrayList SupportedActions => new ArrayList();
+        public ArrayList SupportedActions
+        {
+            get { return new ArrayList(); }
+        }
 
         public string Action(string actionName, string actionParameters)
         {
@@ -201,25 +213,25 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 {
                     DisconnectFromMount();
                     connectedState = false;
-
-                    // Tell the ASCOM local server to shut down
-                    // if no COM objects remain.
-                    ASCOM.LocalServer.Server.ExitIf();
+                    Server.ExitIf();
                 }
             }
         }
 
-        public string Description => RegistrationDescription;
-        public string DriverInfo => "Takahashi Temma Telescope Driver (C# port)";
-        public string DriverVersion => "1.0.0";
-        public short InterfaceVersion => 4;
-        public string Name => "Takahashi Temma";
+        public string Description { get { return RegistrationDescription; } }
+        public string DriverInfo { get { return "Takahashi Temma Telescope Driver (C# port)"; } }
+        public string DriverVersion { get { return "1.0.0"; } }
+        public short InterfaceVersion { get { return 4; } }
+        public string Name { get { return "Takahashi Temma"; } }
 
         #endregion
 
         #region Telescope Properties
 
-        public AlignmentModes AlignmentMode => AlignmentModes.algGermanPolar;
+        public AlignmentModes AlignmentMode
+        {
+            get { return AlignmentModes.algGermanPolar; }
+        }
 
         public double RightAscension
         {
@@ -332,8 +344,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
             isSlewing = true;
         }
 
-        public void SlewToTarget() => SlewToCoordinates(TargetRightAscension, TargetDeclination);
-        public void SlewToTargetAsync() => SlewToCoordinatesAsync(TargetRightAscension, TargetDeclination);
+        public void SlewToTarget()
+        {
+            SlewToCoordinates(TargetRightAscension, TargetDeclination);
+        }
+
+        public void SlewToTargetAsync()
+        {
+            SlewToCoordinatesAsync(TargetRightAscension, TargetDeclination);
+        }
 
         public void SyncToCoordinates(double rightAscension, double declination)
         {
@@ -348,7 +367,82 @@ namespace ASCOM.CCDASTROTemma.Telescope
             currentDeclination = declination;
         }
 
-        public void SyncToTarget() => SyncToCoordinates(TargetRightAscension, TargetDeclination);
+        public void SyncToTarget()
+        {
+            SyncToCoordinates(TargetRightAscension, TargetDeclination);
+        }
+
+        #endregion
+
+        #region Mount Model Helpers
+
+        private bool IsTemma2MModel(TemmaMountModel model)
+        {
+            return model == TemmaMountModel.EM11M ||
+                   model == TemmaMountModel.EM200M;
+        }
+
+        private bool ShouldUseHighSpeed()
+        {
+            if (IsTemma2MModel(settings.MountModel))
+                return true;
+
+            return settings.Use24Volts;
+        }
+
+        private double GetSlewRateMultiplier()
+        {
+            switch (settings.MountModel)
+            {
+                case TemmaMountModel.EM11:
+                case TemmaMountModel.EM11M:
+                    return 150.0;
+
+                case TemmaMountModel.EM200:
+                case TemmaMountModel.EM200M:
+                    return ShouldUseHighSpeed() ? 700.0 : 350.0;
+
+                case TemmaMountModel.NJP:
+                    return ShouldUseHighSpeed() ? 350.0 : 175.0;
+
+                case TemmaMountModel.EM500:
+                    return ShouldUseHighSpeed() ? 520.0 : 260.0;
+
+                default:
+                    return 350.0;
+            }
+        }
+
+        private void ConfigureMountSpeed()
+        {
+            bool highSpeed = ShouldUseHighSpeed();
+
+            // Send v1 = low speed, v2 = high speed.
+            // Use CommandString instead of CommandBlind so the command is sent
+            // directly without CheckConnected() requiring connectedState = true.
+            CommandString(highSpeed ? "v2" : "v1", false);
+
+            LogMessage(
+                "ConfigureMountSpeed",
+                string.Format(
+                    "Model={0}, Use24Volts={1}, Mode={2}",
+                    settings.MountModel,
+                    settings.Use24Volts,
+                    highSpeed ? "High" : "Low"));
+        }
+
+        private void ConfigureAxisRates()
+        {
+            // Your custom AxisRates class creates its own rate collection.
+            // We only log the selected multiplier here.
+            axisRates = null;
+
+            LogMessage(
+                "ConfigureAxisRates",
+                string.Format(
+                    "Maximum axis rate multiplier = {0}",
+                    GetSlewRateMultiplier()));
+        }
 
         #endregion
 
@@ -362,18 +456,22 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             try
             {
-                // Ask the mount for coordinates.
-                string response = SendCommand(
-                    TemmaProtocol.BuildCoordinateQueryCommand());
+                // Initial coordinate query without requiring connectedState = true.
+                serial.Transmit(TemmaProtocol.BuildCoordinateQueryCommand());
+                string response = serial.ReceiveTerminated("#");
 
-                double ra, dec;
+                double ra;
+                double dec;
+
                 if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
-                {
                     throw new Exception("No valid response from Temma mount.");
-                }
 
                 currentRightAscension = ra;
                 currentDeclination = dec;
+
+                // Configure speed and axis rates.
+                ConfigureMountSpeed();
+                ConfigureAxisRates();
             }
             catch
             {
@@ -404,6 +502,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             tracking = false;
             isSlewing = false;
+            pulseGuiding = false;
 
             LogMessage("Disconnect", "Disconnected");
         }
@@ -429,7 +528,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
             {
                 string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
 
-                double ra, dec;
+                double ra;
+                double dec;
+
                 if (TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
                 {
                     currentRightAscension = ra;
@@ -463,39 +564,55 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         #region Required ITelescopeV4 Members
 
-        public double Altitude => 0.0;
-        public double ApertureArea => 0.0;
-        public double ApertureDiameter => settings.Aperture;
-        public bool AtHome => false;
-        public bool AtPark => isParked;
-        public IAxisRates AxisRates(TelescopeAxes axis) => new AxisRates(axis);
-        public double Azimuth => 0.0;
-        public bool CanFindHome => false;
-        public bool CanMoveAxis(TelescopeAxes axis) => false;
-        public bool CanPark => true;
-        public bool CanPulseGuide => true;
-        public bool CanSetDeclinationRate => false;
-        public bool CanSetGuideRates => true;
-        public bool CanSetPark => true;
-        public bool CanSetPierSide => false;
-        public bool CanSetRightAscensionRate => false;
-        public bool CanSetTracking => true;
-        public bool CanSlew => true;
-        public bool CanSlewAltAz => false;
-        public bool CanSlewAltAzAsync => false;
-        public bool CanSlewAsync => true;
-        public bool CanSync => true;
-        public bool CanSyncAltAz => false;
-        public bool CanUnpark => true;
-        public double DeclinationRate { get => 0.0; set { } }
-        public PierSide DestinationSideOfPier(double rightAscension, double declination) => PierSide.pierUnknown;
-        public bool DoesRefraction { get => false; set { } }
-        public EquatorialCoordinateType EquatorialSystem => EquatorialCoordinateType.equTopocentric;
+        public double Altitude { get { return 0.0; } }
+        public double ApertureArea { get { return 0.0; } }
+        public double ApertureDiameter { get { return settings.Aperture; } }
+        public bool AtHome { get { return false; } }
+        public bool AtPark { get { return isParked; } }
+
+        public IAxisRates AxisRates(TelescopeAxes axis)
+        {
+            CheckConnected("AxisRates");
+
+            if (axis != TelescopeAxes.axisPrimary &&
+                axis != TelescopeAxes.axisSecondary)
+            {
+                throw new InvalidValueException(
+                    "Axis",
+                    ((int)axis).ToString(),
+                    "0 or 1");
+            }
+
+            return new AxisRates(axis);
+        }
+
+        public double Azimuth { get { return 0.0; } }
+        public bool CanFindHome { get { return false; } }
+        public bool CanMoveAxis(TelescopeAxes axis) { return false; }
+        public bool CanPark { get { return true; } }
+        public bool CanPulseGuide { get { return true; } }
+        public bool CanSetDeclinationRate { get { return false; } }
+        public bool CanSetGuideRates { get { return true; } }
+        public bool CanSetPark { get { return true; } }
+        public bool CanSetPierSide { get { return false; } }
+        public bool CanSetRightAscensionRate { get { return false; } }
+        public bool CanSetTracking { get { return true; } }
+        public bool CanSlew { get { return true; } }
+        public bool CanSlewAltAz { get { return false; } }
+        public bool CanSlewAltAzAsync { get { return false; } }
+        public bool CanSlewAsync { get { return true; } }
+        public bool CanSync { get { return true; } }
+        public bool CanSyncAltAz { get { return false; } }
+        public bool CanUnpark { get { return true; } }
+        public double DeclinationRate { get { return 0.0; } set { } }
+        public PierSide DestinationSideOfPier(double rightAscension, double declination) { return PierSide.pierUnknown; }
+        public bool DoesRefraction { get { return false; } set { } }
+        public EquatorialCoordinateType EquatorialSystem { get { return EquatorialCoordinateType.equTopocentric; } }
         public void FindHome() { }
-        public double FocalLength => settings.FocalLength;
-        public double GuideRateDeclination { get => settings.GuideRateDec; set => settings.GuideRateDec = value; }
-        public double GuideRateRightAscension { get => settings.GuideRateRA; set => settings.GuideRateRA = value; }
-        public bool IsPulseGuiding => pulseGuiding;
+        public double FocalLength { get { return settings.FocalLength; } }
+        public double GuideRateDeclination { get { return settings.GuideRateDec; } set { settings.GuideRateDec = value; } }
+        public double GuideRateRightAscension { get { return settings.GuideRateRA; } set { settings.GuideRateRA = value; } }
+        public bool IsPulseGuiding { get { return pulseGuiding; } }
         public void MoveAxis(TelescopeAxes axis, double rate) { }
 
         public void PulseGuide(GuideDirections direction, int duration)
@@ -517,19 +634,19 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
         }
 
-        public double RightAscensionRate { get => 0.0; set { } }
+        public double RightAscensionRate { get { return 0.0; } set { } }
         public void SetPark() { }
-        public PierSide SideOfPier { get => PierSide.pierUnknown; set { } }
-        public double SiteElevation { get => settings.SiteElevation; set => settings.SiteElevation = value; }
-        public double SiteLatitude { get => settings.SiteLatitude; set => settings.SiteLatitude = value; }
-        public double SiteLongitude { get => settings.SiteLongitude; set => settings.SiteLongitude = value; }
-        public short SlewSettleTime { get => settings.SlewSettleTime; set => settings.SlewSettleTime = value; }
+        public PierSide SideOfPier { get { return PierSide.pierUnknown; } set { } }
+        public double SiteElevation { get { return settings.SiteElevation; } set { settings.SiteElevation = value; } }
+        public double SiteLatitude { get { return settings.SiteLatitude; } set { settings.SiteLatitude = value; } }
+        public double SiteLongitude { get { return settings.SiteLongitude; } set { settings.SiteLongitude = value; } }
+        public short SlewSettleTime { get { return settings.SlewSettleTime; } set { settings.SlewSettleTime = value; } }
         public void SlewToAltAz(double azimuth, double altitude) { }
         public void SlewToAltAzAsync(double azimuth, double altitude) { }
         public void SyncToAltAz(double azimuth, double altitude) { }
-        public DriveRates TrackingRate { get => DriveRates.driveSidereal; set { } }
-        public ITrackingRates TrackingRates => new TrackingRates();
-        public DateTime UTCDate { get => DateTime.UtcNow; set { } }
+        public DriveRates TrackingRate { get { return DriveRates.driveSidereal; } set { } }
+        public ITrackingRates TrackingRates { get { return new TrackingRates(); } }
+        public DateTime UTCDate { get { return DateTime.UtcNow; } set { } }
 
         public void Park()
         {

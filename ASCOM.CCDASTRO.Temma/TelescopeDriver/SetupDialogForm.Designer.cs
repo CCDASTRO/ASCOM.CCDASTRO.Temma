@@ -61,12 +61,20 @@
         private void InitializeComponent()
         {
             this.grpMountSetup = new System.Windows.Forms.GroupBox();
+            this.label4 = new System.Windows.Forms.Label();
+            this.label3 = new System.Windows.Forms.Label();
+            this.label2 = new System.Windows.Forms.Label();
+            this.label1 = new System.Windows.Forms.Label();
             this.cboComPort = new System.Windows.Forms.ComboBox();
             this.cboTrackingRate = new System.Windows.Forms.ComboBox();
             this.cboMountVoltage = new System.Windows.Forms.ComboBox();
             this.cboMountModel = new System.Windows.Forms.ComboBox();
             this.chkTrace = new System.Windows.Forms.CheckBox();
             this.grpParkSettings = new System.Windows.Forms.GroupBox();
+            this.label11 = new System.Windows.Forms.Label();
+            this.label10 = new System.Windows.Forms.Label();
+            this.label9 = new System.Windows.Forms.Label();
+            this.label8 = new System.Windows.Forms.Label();
             this.nudParkAltitude = new System.Windows.Forms.NumericUpDown();
             this.nudParkAzimuth = new System.Windows.Forms.NumericUpDown();
             this.optParkCurrentPosition = new System.Windows.Forms.RadioButton();
@@ -76,6 +84,9 @@
             this.nudGuideRateDec = new System.Windows.Forms.NumericUpDown();
             this.chkSendRate = new System.Windows.Forms.CheckBox();
             this.grpSiteInfo = new System.Windows.Forms.GroupBox();
+            this.label7 = new System.Windows.Forms.Label();
+            this.label6 = new System.Windows.Forms.Label();
+            this.label5 = new System.Windows.Forms.Label();
             this.cboLatitudeSign = new System.Windows.Forms.ComboBox();
             this.nudLatitudeDeg = new System.Windows.Forms.NumericUpDown();
             this.nudLatitudeMin = new System.Windows.Forms.NumericUpDown();
@@ -93,6 +104,9 @@
             this.chkKeepLastSync = new System.Windows.Forms.CheckBox();
             this.chkAskAtStart = new System.Windows.Forms.CheckBox();
             this.grpTelescopeSetup = new System.Windows.Forms.GroupBox();
+            this.label14 = new System.Windows.Forms.Label();
+            this.label13 = new System.Windows.Forms.Label();
+            this.label12 = new System.Windows.Forms.Label();
             this.nudAperture = new System.Windows.Forms.NumericUpDown();
             this.nudCentralObstruction = new System.Windows.Forms.NumericUpDown();
             this.nudFocalLength = new System.Windows.Forms.NumericUpDown();
@@ -101,20 +115,6 @@
             this.chkWarnBeforeMeridianFlip = new System.Windows.Forms.CheckBox();
             this.btnOK = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
-            this.label1 = new System.Windows.Forms.Label();
-            this.label2 = new System.Windows.Forms.Label();
-            this.label3 = new System.Windows.Forms.Label();
-            this.label4 = new System.Windows.Forms.Label();
-            this.label5 = new System.Windows.Forms.Label();
-            this.label6 = new System.Windows.Forms.Label();
-            this.label7 = new System.Windows.Forms.Label();
-            this.label8 = new System.Windows.Forms.Label();
-            this.label9 = new System.Windows.Forms.Label();
-            this.label10 = new System.Windows.Forms.Label();
-            this.label11 = new System.Windows.Forms.Label();
-            this.label12 = new System.Windows.Forms.Label();
-            this.label13 = new System.Windows.Forms.Label();
-            this.label14 = new System.Windows.Forms.Label();
             this.grpMountSetup.SuspendLayout();
             this.grpParkSettings.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.nudParkAltitude)).BeginInit();
@@ -153,6 +153,43 @@
             this.grpMountSetup.TabIndex = 0;
             this.grpMountSetup.TabStop = false;
             this.grpMountSetup.Text = "Mount Setup";
+            // 
+            // label4
+            // 
+            this.label4.AutoSize = true;
+            this.label4.Location = new System.Drawing.Point(40, 107);
+            this.label4.Name = "label4";
+            this.label4.Size = new System.Drawing.Size(36, 13);
+            this.label4.TabIndex = 8;
+            this.label4.Text = "Model";
+            // 
+            // label3
+            // 
+            this.label3.AutoSize = true;
+            this.label3.Location = new System.Drawing.Point(33, 82);
+            this.label3.Name = "label3";
+            this.label3.Size = new System.Drawing.Size(43, 13);
+            this.label3.TabIndex = 7;
+            this.label3.Text = "Voltage";
+            this.label3.Click += new System.EventHandler(this.label3_Click);
+            // 
+            // label2
+            // 
+            this.label2.AutoSize = true;
+            this.label2.Location = new System.Drawing.Point(7, 56);
+            this.label2.Name = "label2";
+            this.label2.Size = new System.Drawing.Size(75, 13);
+            this.label2.TabIndex = 6;
+            this.label2.Text = "Tracking Rate";
+            // 
+            // label1
+            // 
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(31, 29);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(50, 13);
+            this.label1.TabIndex = 5;
+            this.label1.Text = "Com Port";
             // 
             // cboComPort
             // 
@@ -215,6 +252,44 @@
             this.grpParkSettings.TabIndex = 1;
             this.grpParkSettings.TabStop = false;
             this.grpParkSettings.Text = "Park/Rate Settings";
+            // 
+            // label11
+            // 
+            this.label11.AutoSize = true;
+            this.label11.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.label11.Location = new System.Drawing.Point(60, 135);
+            this.label11.Name = "label11";
+            this.label11.Size = new System.Drawing.Size(90, 13);
+            this.label11.TabIndex = 11;
+            this.label11.Text = "Guide Settings";
+            // 
+            // label10
+            // 
+            this.label10.AutoSize = true;
+            this.label10.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.label10.Location = new System.Drawing.Point(60, 30);
+            this.label10.Name = "label10";
+            this.label10.Size = new System.Drawing.Size(83, 13);
+            this.label10.TabIndex = 10;
+            this.label10.Text = "Park Settings";
+            // 
+            // label9
+            // 
+            this.label9.AutoSize = true;
+            this.label9.Location = new System.Drawing.Point(74, 160);
+            this.label9.Name = "label9";
+            this.label9.Size = new System.Drawing.Size(56, 13);
+            this.label9.TabIndex = 9;
+            this.label9.Text = "Ra  -  Dec";
+            // 
+            // label8
+            // 
+            this.label8.AutoSize = true;
+            this.label8.Location = new System.Drawing.Point(78, 55);
+            this.label8.Name = "label8";
+            this.label8.Size = new System.Drawing.Size(46, 13);
+            this.label8.TabIndex = 8;
+            this.label8.Text = "Alt  -  Az";
             // 
             // nudParkAltitude
             // 
@@ -300,6 +375,33 @@
             this.grpSiteInfo.TabIndex = 2;
             this.grpSiteInfo.TabStop = false;
             this.grpSiteInfo.Text = "Site Information Setup";
+            // 
+            // label7
+            // 
+            this.label7.AutoSize = true;
+            this.label7.Location = new System.Drawing.Point(6, 81);
+            this.label7.Name = "label7";
+            this.label7.Size = new System.Drawing.Size(33, 13);
+            this.label7.TabIndex = 11;
+            this.label7.Text = "El (m)";
+            // 
+            // label6
+            // 
+            this.label6.AutoSize = true;
+            this.label6.Location = new System.Drawing.Point(6, 52);
+            this.label6.Name = "label6";
+            this.label6.Size = new System.Drawing.Size(54, 13);
+            this.label6.TabIndex = 10;
+            this.label6.Text = "Longitude";
+            // 
+            // label5
+            // 
+            this.label5.AutoSize = true;
+            this.label5.Location = new System.Drawing.Point(6, 27);
+            this.label5.Name = "label5";
+            this.label5.Size = new System.Drawing.Size(48, 13);
+            this.label5.TabIndex = 9;
+            this.label5.Text = "Lattitude";
             // 
             // cboLatitudeSign
             // 
@@ -418,7 +520,7 @@
             // 
             // optCounterweightWest
             // 
-            this.optCounterweightWest.Location = new System.Drawing.Point(17, 89);
+            this.optCounterweightWest.Location = new System.Drawing.Point(20, 89);
             this.optCounterweightWest.Name = "optCounterweightWest";
             this.optCounterweightWest.Size = new System.Drawing.Size(136, 20);
             this.optCounterweightWest.TabIndex = 3;
@@ -457,6 +559,33 @@
             this.grpTelescopeSetup.TabIndex = 4;
             this.grpTelescopeSetup.TabStop = false;
             this.grpTelescopeSetup.Text = "Telescope Setup";
+            // 
+            // label14
+            // 
+            this.label14.AutoSize = true;
+            this.label14.Location = new System.Drawing.Point(20, 97);
+            this.label14.Name = "label14";
+            this.label14.Size = new System.Drawing.Size(94, 13);
+            this.label14.TabIndex = 8;
+            this.label14.Text = "Focal Length (mm)";
+            // 
+            // label13
+            // 
+            this.label13.AutoSize = true;
+            this.label13.Location = new System.Drawing.Point(20, 71);
+            this.label13.Name = "label13";
+            this.label13.Size = new System.Drawing.Size(122, 13);
+            this.label13.TabIndex = 7;
+            this.label13.Text = "Central Obstruction (mm)";
+            // 
+            // label12
+            // 
+            this.label12.AutoSize = true;
+            this.label12.Location = new System.Drawing.Point(17, 34);
+            this.label12.Name = "label12";
+            this.label12.Size = new System.Drawing.Size(125, 13);
+            this.label12.TabIndex = 6;
+            this.label12.Text = "Telescope Aperture (mm)";
             // 
             // nudAperture
             // 
@@ -521,135 +650,6 @@
             this.btnCancel.TabIndex = 6;
             this.btnCancel.Text = "Cancel";
             this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
-            // 
-            // label1
-            // 
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(31, 29);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(50, 13);
-            this.label1.TabIndex = 5;
-            this.label1.Text = "Com Port";
-            // 
-            // label2
-            // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(7, 56);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(75, 13);
-            this.label2.TabIndex = 6;
-            this.label2.Text = "Tracking Rate";
-            // 
-            // label3
-            // 
-            this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(33, 82);
-            this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(43, 13);
-            this.label3.TabIndex = 7;
-            this.label3.Text = "Voltage";
-            this.label3.Click += new System.EventHandler(this.label3_Click);
-            // 
-            // label4
-            // 
-            this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(40, 107);
-            this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(36, 13);
-            this.label4.TabIndex = 8;
-            this.label4.Text = "Model";
-            // 
-            // label5
-            // 
-            this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(6, 27);
-            this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(48, 13);
-            this.label5.TabIndex = 9;
-            this.label5.Text = "Lattitude";
-            // 
-            // label6
-            // 
-            this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(6, 52);
-            this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(54, 13);
-            this.label6.TabIndex = 10;
-            this.label6.Text = "Longitude";
-            // 
-            // label7
-            // 
-            this.label7.AutoSize = true;
-            this.label7.Location = new System.Drawing.Point(6, 81);
-            this.label7.Name = "label7";
-            this.label7.Size = new System.Drawing.Size(33, 13);
-            this.label7.TabIndex = 11;
-            this.label7.Text = "El (m)";
-            // 
-            // label8
-            // 
-            this.label8.AutoSize = true;
-            this.label8.Location = new System.Drawing.Point(78, 55);
-            this.label8.Name = "label8";
-            this.label8.Size = new System.Drawing.Size(46, 13);
-            this.label8.TabIndex = 8;
-            this.label8.Text = "Alt  -  Az";
-            // 
-            // label9
-            // 
-            this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(74, 160);
-            this.label9.Name = "label9";
-            this.label9.Size = new System.Drawing.Size(56, 13);
-            this.label9.TabIndex = 9;
-            this.label9.Text = "Ra  -  Dec";
-            // 
-            // label10
-            // 
-            this.label10.AutoSize = true;
-            this.label10.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label10.Location = new System.Drawing.Point(60, 30);
-            this.label10.Name = "label10";
-            this.label10.Size = new System.Drawing.Size(83, 13);
-            this.label10.TabIndex = 10;
-            this.label10.Text = "Park Settings";
-            // 
-            // label11
-            // 
-            this.label11.AutoSize = true;
-            this.label11.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label11.Location = new System.Drawing.Point(60, 135);
-            this.label11.Name = "label11";
-            this.label11.Size = new System.Drawing.Size(90, 13);
-            this.label11.TabIndex = 11;
-            this.label11.Text = "Guide Settings";
-            // 
-            // label12
-            // 
-            this.label12.AutoSize = true;
-            this.label12.Location = new System.Drawing.Point(17, 34);
-            this.label12.Name = "label12";
-            this.label12.Size = new System.Drawing.Size(125, 13);
-            this.label12.TabIndex = 6;
-            this.label12.Text = "Telescope Aperture (mm)";
-            // 
-            // label13
-            // 
-            this.label13.AutoSize = true;
-            this.label13.Location = new System.Drawing.Point(20, 71);
-            this.label13.Name = "label13";
-            this.label13.Size = new System.Drawing.Size(122, 13);
-            this.label13.TabIndex = 7;
-            this.label13.Text = "Central Obstruction (mm)";
-            // 
-            // label14
-            // 
-            this.label14.AutoSize = true;
-            this.label14.Location = new System.Drawing.Point(20, 97);
-            this.label14.Name = "label14";
-            this.label14.Size = new System.Drawing.Size(94, 13);
-            this.label14.TabIndex = 8;
-            this.label14.Text = "Focal Length (mm)";
             // 
             // SetupDialogForm
             // 
