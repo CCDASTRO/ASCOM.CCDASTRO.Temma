@@ -342,6 +342,30 @@ namespace ASCOM.CCDASTROTemma.Telescope
             serial.Speed = SerialSpeed.ps19200;
             serial.Connected = true;
 
+            try
+            {
+                // Ask the mount for coordinates.
+                string response = SendCommand(
+                    TemmaProtocol.BuildCoordinateQueryCommand());
+
+                double ra, dec;
+                if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
+                {
+                    throw new Exception("No valid response from Temma mount.");
+                }
+
+                currentRightAscension = ra;
+                currentDeclination = dec;
+            }
+            catch
+            {
+                if (serial != null && serial.Connected)
+                    serial.Connected = false;
+
+                throw new NotConnectedException(
+                    "Unable to communicate with the Temma mount.");
+            }
+
             tracking = !settings.TrackingOffOnConnect;
             isSlewing = false;
             lastCoordinateUpdate = DateTime.MinValue;
@@ -352,12 +376,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 settings.IsParked = false;
             }
 
-            if (settings.SendRate)
-            {
-                // Placeholder for future guide rate transmission to mount.
-            }
-
-            LogMessage("Connect", "Connected to " + settings.ComPort);
+            LogMessage("Connect", "Successfully connected to Temma mount.");
         }
 
         private void DisconnectFromMount()
