@@ -3,7 +3,7 @@
 namespace ASCOM.CCDASTROTemma.Telescope
 {
     /// <summary>
-    /// Encapsulates Takahashi Temma protocol command formatting and response parsing.
+    /// Encapsulates Takahashi Temma protocol command formatting and response parsing
     ///
     /// This class is independent of ASCOM interfaces and serial communications.
     /// It only knows how to build command strings and interpret responses.
