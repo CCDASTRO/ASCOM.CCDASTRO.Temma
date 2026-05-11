@@ -78,10 +78,7 @@
   <ItemGroup>
     <Compile Include="ClassFactory.cs" />
     <Compile Include="TelescopeDriver\DriverSettings.cs" />
-    <Compile Include="TelescopeDriver\frmUnpark.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    
+        
     <Compile Include="TelescopeDriver\SetupDialogForm.cs">
       <SubType>Form</SubType>
     </Compile>
