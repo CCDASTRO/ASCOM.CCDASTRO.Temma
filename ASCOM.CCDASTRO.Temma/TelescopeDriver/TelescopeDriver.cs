@@ -21,7 +21,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
     [ComVisible(true)]
     [Guid("c41150b3-378c-4a3a-a44c-55e99b8c7554")]
     [ProgId("ASCOM.CCDASTROTemma.Telescope")]
-    [ServedClassName("CCDAstro Temma Telescope Driver")]
+    [ServedClassName("CCDASTRO Temma Mount Driver")]
     [ClassInterface(ClassInterfaceType.None)]
     public class Telescope : ReferenceCountedObjectBase, ITelescopeV4, IDisposable
     {
@@ -49,7 +49,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         #region ASCOM Registration
 
         private const string RegistrationProgId = "ASCOM.CCDASTROTemma.Telescope";
-        private const string RegistrationDescription = "CCDAstro Temma Telescope Driver";
+        private const string RegistrationDescription = "CCDASTRO Temma Mount Driver";
 
         [ComRegisterFunction]
         public static void RegisterASCOM(Type t)
