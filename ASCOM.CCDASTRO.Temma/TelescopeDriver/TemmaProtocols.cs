@@ -44,13 +44,14 @@ namespace ASCOM.CCDASTROTemma.Telescope
         /// RA is expressed in decimal hours.
         /// Dec is expressed in decimal degrees.
         /// </summary>
-        public static string BuildSlewCommand(double rightAscensionHours, double declinationDegrees)
+        public static string BuildSlewCommand(
+    double rightAscensionHours,
+    double declinationDegrees)
         {
             string ra = FormatRa(rightAscensionHours);
             string dec = FormatDec(declinationDegrees);
 
-            // The Temma protocol uses a command beginning with D.
-            return $"D{ra} {dec}";
+            return "D" + ra + dec;
         }
 
         /// <summary>
@@ -58,9 +59,16 @@ namespace ASCOM.CCDASTROTemma.Telescope
         ///
         /// For now, sync uses the same coordinate format as the slew command.
         /// </summary>
-        public static string BuildSyncCommand(double rightAscensionHours, double declinationDegrees)
+        public static string BuildSyncCommand(
+    double rightAscensionHours,
+    double declinationDegrees)
         {
-            return BuildSlewCommand(rightAscensionHours, declinationDegrees);
+            string ra = FormatRa(rightAscensionHours);
+            string dec = FormatDec(declinationDegrees);
+
+            // Temma sync command:
+            // P + HHMMSS + ±DDMMm
+            return "P" + ra + dec;
         }
 
         /// <summary>
