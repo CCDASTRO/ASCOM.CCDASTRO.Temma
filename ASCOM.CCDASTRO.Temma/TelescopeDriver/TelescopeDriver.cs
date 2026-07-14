@@ -1,4 +1,4 @@
-// Updated to resolve:
+﻿// Updated to resolve:
 // - AxisRates.Add() compile error
 // - AxisRates constructor requiring TelescopeAxes
 // - TemmaMountModel enum integration
@@ -450,36 +450,56 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private void ConnectToMount()
         {
+            // Match the proven VB6 Temma serial configuration exactly:
+            // 19200 baud, EVEN parity, 8 data bits, 1 stop bit, DTR enabled,
+            // 5 second receive timeout. Temma commands and replies are CRLF terminated.
             serial.PortName = settings.ComPort;
             serial.Speed = SerialSpeed.ps19200;
-            serial.Connected = true;
+            serial.Parity = SerialParity.Even;
+            serial.DTREnable = true;
+            serial.ReceiveTimeout = 5;
 
             try
             {
-                // Initial coordinate query without requiring connectedState = true.
-                serial.Transmit(TemmaProtocol.BuildCoordinateQueryCommand());
-                string response = serial.ReceiveTerminated("#");
+                LogMessage("Connect", string.Format(
+                    "Opening {0}: 19200,E,8,1; DTR=True; ReceiveTimeout=5s",
+                    settings.ComPort));
+
+                serial.Connected = true;
+                serial.ClearBuffers();
+
+                // VB6 authoritative behavior:
+                //   ocom.Transmit "E" & vbCrLf
+                //   buf = ocom.ReceiveTerminated(vbCrLf)
+                string command = TemmaProtocol.BuildCoordinateQueryCommand() + "\r\n";
+                LogMessage("TX", EscapeForLog(command));
+                serial.Transmit(command);
+
+                string response = serial.ReceiveTerminated("\r\n");
+                LogMessage("RX", EscapeForLog(response));
 
                 double ra;
                 double dec;
 
                 if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
-                    throw new Exception("No valid response from Temma mount.");
+                    throw new Exception("Temma returned a response that could not be parsed: " +
+                                        EscapeForLog(response));
 
                 currentRightAscension = ra;
                 currentDeclination = dec;
 
-                // Configure speed and axis rates.
                 ConfigureMountSpeed();
                 ConfigureAxisRates();
             }
-            catch
+            catch (Exception ex)
             {
+                LogMessage("Connect ERROR", ex.ToString());
+
                 if (serial != null && serial.Connected)
                     serial.Connected = false;
 
                 throw new NotConnectedException(
-                    "Unable to communicate with the Temma mount.");
+                    "Unable to communicate with the Temma mount. " + ex.Message);
             }
 
             tracking = !settings.TrackingOffOnConnect;
@@ -511,12 +531,20 @@ namespace ASCOM.CCDASTROTemma.Telescope
         {
             CheckConnected("SendCommand");
 
-            LogMessage("TX", command);
-            serial.Transmit(command);
-            string response = serial.ReceiveTerminated("#");
-            LogMessage("RX", response);
+            // Match VB6 Temma framing: commands and responses are CRLF terminated.
+            string framedCommand = command.EndsWith("\r\n") ? command : command + "\r\n";
+            LogMessage("TX", EscapeForLog(framedCommand));
+            serial.Transmit(framedCommand);
+            string response = serial.ReceiveTerminated("\r\n");
+            LogMessage("RX", EscapeForLog(response));
 
             return response;
+        }
+
+        private static string EscapeForLog(string value)
+        {
+            if (value == null) return "<null>";
+            return value.Replace("\r", "<CR>").Replace("\n", "<LF>");
         }
 
         private void UpdateCoordinates()

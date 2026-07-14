@@ -443,6 +443,7 @@
             // nudLongitudeDeg
             // 
             this.nudLongitudeDeg.Location = new System.Drawing.Point(119, 50);
+            this.nudLongitudeDeg.Maximum = new decimal(new int[] { 180, 0, 0, 0 });
             this.nudLongitudeDeg.Name = "nudLongitudeDeg";
             this.nudLongitudeDeg.Size = new System.Drawing.Size(47, 20);
             this.nudLongitudeDeg.TabIndex = 5;
@@ -590,6 +591,7 @@
             // nudAperture
             // 
             this.nudAperture.Location = new System.Drawing.Point(148, 30);
+            this.nudAperture.Maximum = new decimal(new int[] { 5000, 0, 0, 0 });
             this.nudAperture.Name = "nudAperture";
             this.nudAperture.Size = new System.Drawing.Size(52, 20);
             this.nudAperture.TabIndex = 0;
@@ -604,6 +606,7 @@
             // nudFocalLength
             // 
             this.nudFocalLength.Location = new System.Drawing.Point(148, 95);
+            this.nudFocalLength.Maximum = new decimal(new int[] { 100000, 0, 0, 0 });
             this.nudFocalLength.Name = "nudFocalLength";
             this.nudFocalLength.Size = new System.Drawing.Size(52, 20);
             this.nudFocalLength.TabIndex = 2;

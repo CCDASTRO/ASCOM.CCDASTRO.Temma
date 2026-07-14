@@ -1,0 +1,27 @@
+Temma C# Debug v2 — VB6 protocol alignment
+
+Authoritative working VB6 behavior found in Telescope_V2.cls:
+- PortName from profile
+- Parity: Even
+- Speed: 19200 baud
+- DTR: Enabled
+- ReceiveTimeout: 5 seconds
+- Before coordinate poll: ClearBuffers
+- Coordinate query TX: "E" + CRLF
+- Coordinate response RX: ReceiveTerminated(CRLF)
+
+Differences found in the prior C# implementation:
+- Parity was not explicitly set to Even.
+- DTR was not explicitly enabled.
+- Receive timeout was not explicitly set to 5 seconds.
+- Coordinate query transmitted "E" without CRLF.
+- ReceiveTerminated("#") was used, while the working VB6 driver waits for CRLF.
+
+Changes in this version:
+- Serial configuration aligned with working VB6.
+- All SendCommand traffic now appends CRLF and receives through CRLF.
+- Connection diagnostics log escaped <CR>/<LF> TX and RX.
+- Underlying exceptions are preserved in the trace.
+- NumericUpDown maxima corrected for longitude, aperture, and focal length.
+
+Build this solution in Visual Studio 2022 and test against the mount.
