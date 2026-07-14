@@ -1,0 +1,19 @@
+CCDASTRO Temma Driver — Version 1.0.1 Debug v3
+
+Retains all Debug v2 corrections:
+- 19200 baud, even parity, DTR enabled, 5-second receive timeout.
+- CRLF command/response framing matching the working VB6 driver.
+- Detailed TX/RX and exception logging.
+- Corrected NumericUpDown ranges for longitude, aperture, and focal length.
+
+New correction:
+- Fixed startup state-management failure. The mount replied correctly, but
+  ConfigureMountSpeed() called SendCommand(), and CheckConnected() rejected the
+  internal startup command because Connected had not yet been published true.
+- Added connectionInitializing state.
+- Internal initialization commands are permitted only during ConnectToMount().
+- connectedState becomes true only after initialization completes successfully.
+- connectionInitializing is always cleared in a finally block.
+- A failed initialization resets connectedState and closes the serial connection.
+
+Version: 1.0.1.0

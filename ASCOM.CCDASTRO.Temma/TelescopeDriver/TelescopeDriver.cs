@@ -29,6 +29,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         internal static string DriverDescription;
 
         private bool connectedState;
+        private bool connectionInitializing;
         private bool disposedValue;
         private bool isSlewing;
         private bool tracking;
@@ -459,6 +460,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             serial.DTREnable = true;
             serial.ReceiveTimeout = 5;
 
+            connectionInitializing = true;
+
             try
             {
                 LogMessage("Connect", string.Format(
@@ -490,9 +493,13 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
                 ConfigureMountSpeed();
                 ConfigureAxisRates();
+
+                connectedState = true;
+                LogMessage("Connect", "Temma initialization completed successfully.");
             }
             catch (Exception ex)
             {
+                connectedState = false;
                 LogMessage("Connect ERROR", ex.ToString());
 
                 if (serial != null && serial.Connected)
@@ -500,6 +507,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
                 throw new NotConnectedException(
                     "Unable to communicate with the Temma mount. " + ex.Message);
+            }
+            finally
+            {
+                connectionInitializing = false;
             }
 
             tracking = !settings.TrackingOffOnConnect;
@@ -578,7 +589,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private void CheckConnected(string member)
         {
-            if (!connectedState)
+            // Permit internal startup commands while the physical serial connection
+            // is open, but do not publish Connected=true until initialization succeeds.
+            if (!connectedState && !connectionInitializing)
                 throw new NotConnectedException(DriverDescription + " is not connected: " + member);
         }
 
