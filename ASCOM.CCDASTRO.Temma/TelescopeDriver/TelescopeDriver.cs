@@ -544,10 +544,22 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             // Match VB6 Temma framing: commands and responses are CRLF terminated.
             string framedCommand = command.EndsWith("\r\n") ? command : command + "\r\n";
-            LogMessage("TX", EscapeForLog(framedCommand));
+
+            // Suppress repetitive coordinate-poll logging ("E" command).
+            bool logTransaction = !string.Equals(
+                command.Trim(),
+                TemmaProtocol.BuildCoordinateQueryCommand(),
+                StringComparison.OrdinalIgnoreCase);
+
+            if (logTransaction)
+                LogMessage("TX", EscapeForLog(framedCommand));
+
             serial.Transmit(framedCommand);
+
             string response = serial.ReceiveTerminated("\r\n");
-            LogMessage("RX", EscapeForLog(response));
+
+            if (logTransaction)
+                LogMessage("RX", EscapeForLog(response));
 
             return response;
         }
