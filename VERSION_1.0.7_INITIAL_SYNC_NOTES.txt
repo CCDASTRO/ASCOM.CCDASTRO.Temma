@@ -1,0 +1,18 @@
+Version 1.0.7
+
+Adds VB6-derived startup synchronization selected by the existing Setup Dialog
+orientation radio buttons: OTA East, OTA West, Counterweight Down, and
+Counterweight West.
+
+After the initial E query is parsed, connection now sends T + LST and I +
+latitude, applies the selected initialization method, and verifies the result
+with another E query.
+
+OTA East/West use the VB6-style pier-reference check/toggle followed by T, Z,
+and D + LST + latitude.
+
+Counterweight Down and Counterweight West establish the pier reference, send
+T/Z/T, then use the corrected SyncToCoordinates method for the calculated
+startup RA/Dec.
+
+Legacy VB6 modal dialogs and handbox UI are intentionally not ported.
