@@ -1,0 +1,29 @@
+CCDASTRO Temma ASCOM Driver — Version 1.0.4 Sync Revision
+
+Reason for revision:
+The real Temma mount connected correctly but did not respond to the C# driver's
+previous Sync command. The working VB6 driver was supplied as the authoritative
+reference.
+
+VB6-proven SyncToCoordinates sequence implemented:
+1. Validate connected/not parked through the existing driver safeguards.
+2. Calculate/use current local sidereal time.
+3. Clear serial buffers.
+4. Blind transmit T + HHMMSS + CRLF.
+5. Wait 100 ms.
+6. Blind transmit T + HHMMSS + CRLF again.
+7. Wait 100 ms.
+8. Blind transmit D + formatted RA + formatted Dec + CRLF.
+9. Clear buffers.
+10. Wait 100 ms.
+11. Update target RA/Dec state.
+
+Important correction:
+The prior C# Sync path used a P-based Sync command. The working VB6 driver uses
+the T/T/D sequence and does not wait for replies to those commands.
+
+New helper:
+SendBlindTemmaCommand() transmits CRLF-framed commands without waiting for a
+response, matching VB6 CommandBlind behavior for the Sync initialization steps.
+
+Version: 1.0.4

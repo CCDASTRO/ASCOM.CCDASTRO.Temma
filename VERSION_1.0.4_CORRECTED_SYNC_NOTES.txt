@@ -1,0 +1,16 @@
+CCDASTRO Temma ASCOM Driver — Version 1.0.4 Corrected Sync Revision
+
+This replaces the prior non-compiling 1.0.4 package.
+
+Corrected against the actual supplied source:
+- Uses existing SiderealTime property.
+- Uses existing TargetRightAscension and TargetDeclination properties.
+- Uses existing TemmaProtocol.BuildSlewCommand() as the project's D + RA/Dec
+  formatter, matching the final D command in the working VB6 Sync sequence.
+- Removes nonexistent FormatRA, siderealTime, targetRightAscension, and
+  targetDeclination identifiers.
+- Implements VB6-proven blind T / T / D Sync sequence with 100 ms delays.
+- Does not wait for replies to the T or D Sync transmissions.
+
+The axisRates assigned-but-never-used message is an existing warning and is
+unrelated to this Sync correction.

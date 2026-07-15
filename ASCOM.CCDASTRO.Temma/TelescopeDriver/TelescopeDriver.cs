@@ -359,13 +359,56 @@ namespace ASCOM.CCDASTROTemma.Telescope
         {
             CheckConnected("SyncToCoordinates");
 
+            if (isParked)
+                throw new ParkedException("The mount is parked.");
+
+            if (rightAscension < 0.0 || rightAscension >= 24.0)
+                throw new InvalidValueException(
+                    "RightAscension", rightAscension.ToString(), "0 to less than 24 hours");
+
+            if (declination < -90.0 || declination > 90.0)
+                throw new InvalidValueException(
+                    "Declination", declination.ToString(), "-90 to +90 degrees");
+
+            // Match the proven VB6 SyncToCoordinates sequence:
+            // Clear buffers, send T + LST twice with 100 ms delays,
+            // then blindly transmit the D coordinate command.
+            string lst = FormatTemmaSiderealTime(SiderealTime);
+
+            serial.ClearBuffers();
+
+            SendBlindTemmaCommand("T" + lst);
+            System.Threading.Thread.Sleep(100);
+
+            SendBlindTemmaCommand("T" + lst);
+            System.Threading.Thread.Sleep(100);
+
+            // In this project BuildSlewCommand() is the existing D + RA/Dec formatter.
+            // The working VB6 driver also uses a D command for the final Sync transmit.
+            string syncCommand = TemmaProtocol.BuildSlewCommand(
+                rightAscension, declination);
+
+            string framedSyncCommand = syncCommand.EndsWith("\r\n")
+                ? syncCommand
+                : syncCommand + "\r\n";
+
+            LogMessage("Sync TX", EscapeForLog(framedSyncCommand));
+            serial.Transmit(framedSyncCommand);
+
+            serial.ClearBuffers();
+            System.Threading.Thread.Sleep(100);
+
             TargetRightAscension = rightAscension;
             TargetDeclination = declination;
 
-            SendCommand(TemmaProtocol.BuildSyncCommand(rightAscension, declination));
-
+            // Mirror the requested sync immediately in driver state; the next
+            // coordinate poll will verify what the real mount reports.
             currentRightAscension = rightAscension;
             currentDeclination = declination;
+
+            LogMessage("Sync", string.Format(
+                "VB6-compatible T/T/D sync sequence completed. RA={0:F6} h, Dec={1:F6} deg",
+                rightAscension, declination));
         }
 
         public void SyncToTarget()
@@ -598,6 +641,31 @@ namespace ASCOM.CCDASTROTemma.Telescope
         #endregion
 
         #region Utility Methods
+
+        private void SendBlindTemmaCommand(string command)
+        {
+            CheckConnected("SendBlindTemmaCommand");
+
+            string framedCommand = command.EndsWith("\r\n")
+                ? command
+                : command + "\r\n";
+
+            LogMessage("Blind TX", EscapeForLog(framedCommand));
+            serial.Transmit(framedCommand);
+        }
+
+        private static string FormatTemmaSiderealTime(double siderealHours)
+        {
+            while (siderealHours < 0.0) siderealHours += 24.0;
+            while (siderealHours >= 24.0) siderealHours -= 24.0;
+
+            int totalSeconds = (int)Math.Round(siderealHours * 3600.0) % 86400;
+            int hours = totalSeconds / 3600;
+            int minutes = (totalSeconds % 3600) / 60;
+            int seconds = totalSeconds % 60;
+
+            return string.Format("{0:00}{1:00}{2:00}", hours, minutes, seconds);
+        }
 
         private void CheckConnected(string member)
         {
