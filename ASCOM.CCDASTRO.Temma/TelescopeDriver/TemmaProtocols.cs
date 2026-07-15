@@ -3,86 +3,38 @@
 namespace ASCOM.CCDASTROTemma.Telescope
 {
     /// <summary>
-    /// Encapsulates Takahashi Temma protocol command formatting and response parsing
-    ///
-    /// This class is independent of ASCOM interfaces and serial communications.
-    /// It only knows how to build command strings and interpret responses.
+    /// Takahashi Temma protocol formatting and parsing.
+    /// Formats are matched to the supplied working VB6 driver.
     /// </summary>
     public static class TemmaProtocol
     {
-        /// <summary>
-        /// Command used to query the current mount position.
-        /// </summary>
-        public static string BuildCoordinateQueryCommand()
-        {
-            return "E";
-        }
+        public static string BuildCoordinateQueryCommand() { return "E"; }
+        public static string BuildAbortCommand() { return "PS"; }
 
-        /// <summary>
-        /// Command used to abort a slew.
-        /// </summary>
-        public static string BuildAbortCommand()
-        {
-            return "PS";
-        }
-
-        /// <summary>
-        /// Build the command used to turn tracking on or off.
-        ///
-        /// Temma2 mounts use:
-        ///   STN-OFF = tracking ON
-        ///   STN-ON  = tracking OFF
-        /// </summary>
+        // Temma2:
+        // STN-OFF = tracking ON
+        // STN-ON  = tracking OFF
         public static string BuildTrackingCommand(bool enableTracking)
         {
             return enableTracking ? "STN-OFF" : "STN-ON";
         }
 
-        /// <summary>
-        /// Build a slew command to the specified coordinates.
-        ///
-        /// RA is expressed in decimal hours.
-        /// Dec is expressed in decimal degrees.
-        /// </summary>
-        public static string BuildSlewCommand(
-    double rightAscensionHours,
-    double declinationDegrees)
+        // GOTO uses P + HHMMtt + +/-DDMMt and returns R0..R5.
+        public static string BuildSlewCommand(double rightAscensionHours, double declinationDegrees)
         {
-            string ra = FormatRa(rightAscensionHours);
-            string dec = FormatDec(declinationDegrees);
+            return "P" + FormatRa(rightAscensionHours) + FormatDec(declinationDegrees);
+        }
 
-            return "D" + ra + dec;
+        // Sync uses D + HHMMtt + +/-DDMMt after the T/T LST sequence.
+        public static string BuildSyncCommand(double rightAscensionHours, double declinationDegrees)
+        {
+            return "D" + FormatRa(rightAscensionHours) + FormatDec(declinationDegrees);
         }
 
         /// <summary>
-        /// Build a sync command.
-        ///
-        /// For now, sync uses the same coordinate format as the slew command.
-        /// </summary>
-        public static string BuildSyncCommand(
-    double rightAscensionHours,
-    double declinationDegrees)
-        {
-            string ra = FormatRa(rightAscensionHours);
-            string dec = FormatDec(declinationDegrees);
-
-            // Temma sync command:
-            // P + HHMMSS + ±DDMMm
-            return "P" + ra + dec;
-        }
-
-        /// <summary>
-        /// Parse the Temma E response.
-        ///
-        /// Expected format:
-        ///   EHHMMSSsDDMMm...
-        ///
-        /// Example:
-        ///   E123456+45123
-        ///
-        /// Returns:
-        ///   RA in decimal hours.
-        ///   Dec in decimal degrees.
+        /// Parse EHHMMtt+/-DDMMt...
+        /// HHMMtt uses hundredths of a minute, not seconds.
+        /// DDMMt uses tenths of an arcminute.
         /// </summary>
         public static bool TryParseCoordinates(
             string response,
@@ -96,34 +48,36 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 return false;
 
             response = response.Trim();
-
-            if (response.Length < 13)
-                return false;
-
-            if (response[0] != 'E')
+            if (response.Length < 13 || response[0] != 'E')
                 return false;
 
             try
             {
-                // RA: HHMMSS
                 int hh = int.Parse(response.Substring(1, 2));
                 int mm = int.Parse(response.Substring(3, 2));
-                int ss = int.Parse(response.Substring(5, 2));
+                int hundredthMinute = int.Parse(response.Substring(5, 2));
 
-                rightAscensionHours = hh + (mm / 60.0) + (ss / 3600.0);
+                if (hh < 0 || hh > 23 || mm < 0 || mm > 59 ||
+                    hundredthMinute < 0 || hundredthMinute > 99)
+                    return false;
 
-                // Dec sign
+                rightAscensionHours =
+                    hh + (mm / 60.0) + (hundredthMinute / 6000.0);
+
                 char signChar = response[7];
+                if (signChar != '+' && signChar != '-' && signChar != ' ')
+                    return false;
 
-                // DDMMm
                 int degrees = int.Parse(response.Substring(8, 2));
                 int minutes = int.Parse(response.Substring(10, 2));
                 int tenthMinute = int.Parse(response.Substring(12, 1));
 
+                if (degrees < 0 || degrees > 90 || minutes < 0 || minutes > 59 ||
+                    tenthMinute < 0 || tenthMinute > 9)
+                    return false;
+
                 declinationDegrees =
-                    degrees +
-                    (minutes / 60.0) +
-                    (tenthMinute / 600.0);
+                    degrees + (minutes / 60.0) + (tenthMinute / 600.0);
 
                 if (signChar == '-')
                     declinationDegrees = -declinationDegrees;
@@ -137,46 +91,50 @@ namespace ASCOM.CCDASTROTemma.Telescope
         }
 
         /// <summary>
-        /// Convert decimal hours to HHMMSS.
+        /// VB6 TAKhms equivalent: HHMMtt where tt is hundredths of a minute.
         /// </summary>
         public static string FormatRa(double rightAscensionHours)
         {
-            // Normalize to 0–24 hours.
-            while (rightAscensionHours < 0.0)
-                rightAscensionHours += 24.0;
+            while (rightAscensionHours < 0.0) rightAscensionHours += 24.0;
+            while (rightAscensionHours >= 24.0) rightAscensionHours -= 24.0;
 
-            while (rightAscensionHours >= 24.0)
-                rightAscensionHours -= 24.0;
+            int hh = (int)Math.Floor(rightAscensionHours);
+            double minuteValue = (rightAscensionHours - hh) * 60.0;
+            int mm = (int)Math.Floor(minuteValue);
+            int tt = (int)Math.Floor((minuteValue - mm) * 100.0);
 
-            TimeSpan ts = TimeSpan.FromHours(rightAscensionHours);
+            if (tt >= 100) { tt = 0; mm++; }
+            if (mm >= 60) { mm = 0; hh++; }
+            if (hh >= 24) hh = 0;
 
-            return string.Format(
-                "{0:00}{1:00}{2:00}",
-                ts.Hours,
-                ts.Minutes,
-                ts.Seconds);
+            return string.Format("{0:00}{1:00}{2:00}", hh, mm, tt);
         }
 
         /// <summary>
-        /// Convert decimal degrees to ±DD:MM:SS.
+        /// VB6 TAKdms equivalent: +/-DDMMt where t is tenths of an arcminute.
         /// </summary>
         public static string FormatDec(double declinationDegrees)
         {
-            string sign = declinationDegrees >= 0.0 ? "+" : "-";
+            string sign = declinationDegrees < 0.0 ? "-" : "+";
+            double value = Math.Abs(declinationDegrees);
 
-            double absDec = Math.Abs(declinationDegrees);
+            int dd = (int)Math.Floor(value);
+            double minuteValue = (value - dd) * 60.0;
+            int mm = (int)Math.Floor(minuteValue);
+            int t = (int)Math.Floor((minuteValue - mm) * 10.0);
 
-            int degrees = (int)Math.Floor(absDec);
-            int minutes = (int)Math.Floor((absDec - degrees) * 60.0);
-            int seconds = (int)Math.Round(
-                ((((absDec - degrees) * 60.0) - minutes) * 60.0));
+            if (t >= 10) { t = 0; mm++; }
+            if (mm >= 60) { mm = 0; dd++; }
 
-            return string.Format(
-                "{0}{1:00}:{2:00}:{3:00}",
-                sign,
-                degrees,
-                minutes,
-                seconds);
+            // Match the VB6 pole guard.
+            if (dd >= 90)
+            {
+                dd = 89;
+                mm = 59;
+                t = 9;
+            }
+
+            return string.Format("{0}{1:00}{2:00}{3:0}", sign, dd, mm, t);
         }
     }
 }

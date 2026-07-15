@@ -1,0 +1,48 @@
+CCDASTRO Temma ASCOM Driver — Version 1.0.5 Protocol Audit
+
+Corrected against the supplied working VB6 Telescope_V2.cls behavior.
+
+Major corrections:
+1. Temma coordinate format
+   - RA is HHMMtt, where tt is hundredths of a minute, not seconds.
+   - Declination is +/-DDMMt, where t is tenths of an arcminute.
+   - E-response parsing corrected to the same format.
+
+2. GOTO
+   - Correct sequence is blind T + current LST, 100 ms delay, then
+     P + target RA/Dec.
+   - P response R0 is required for success.
+   - R1 through R5 are reported as explicit GOTO failures.
+
+3. Sync
+   - Retains the VB6-proven T / T / D sequence.
+   - Sync now uses BuildSyncCommand(), which correctly builds D + RA/Dec.
+
+4. AbortSlew
+   - PS is now sent as a blind command, matching VB6.
+
+5. Slew completion
+   - RA error calculation now handles the 0h/24h wrap boundary.
+
+6. MoveAxis
+   - Implemented VB6 M-command direction mapping.
+   - Stop uses blind M@.
+   - CanMoveAxis now reports primary/secondary support.
+
+7. PulseGuide
+   - Implemented actual Temma M-direction commands and M@ stop.
+   - Pulses longer than 3000 ms are segmented as in the VB6 driver.
+   - Minimum pulse duration is 100 ms.
+
+8. Park
+   - Stops an active slew and disables tracking before marking the
+     driver state parked.
+
+Not changed:
+- Full VB6 configurable park-position / Alt-Az park restoration behavior was
+  not copied because the current C# settings model does not contain the same
+  VB6 park-position, hour-angle, meridian-delay, and power-off-offset state.
+  Inventing that state would be unsafe. The current C# Park remains a
+  software park, but now stops motion and tracking correctly.
+
+Version: 1.0.5

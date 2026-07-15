@@ -221,7 +221,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public string Description { get { return RegistrationDescription; } }
         public string DriverInfo { get { return "Takahashi Temma Telescope Driver (C# port)"; } }
-        public string DriverVersion { get { return "1.0.0"; } }
+        public string DriverVersion { get { return "1.0.5"; } }
         public short InterfaceVersion { get { return 4; } }
         public string Name { get { return "Takahashi Temma"; } }
 
@@ -276,6 +276,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     UpdateCoordinates();
 
                     double raError = Math.Abs(currentRightAscension - TargetRightAscension);
+                    if (raError > 12.0) raError = 24.0 - raError;
                     double decError = Math.Abs(currentDeclination - TargetDeclination);
 
                     if (raError < (1.0 / 3600.0) && decError < (10.0 / 3600.0))
@@ -316,8 +317,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void AbortSlew()
         {
             CheckConnected("AbortSlew");
-            SendCommand(TemmaProtocol.BuildAbortCommand());
+            SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
             isSlewing = false;
+            Thread.Sleep(500);
         }
 
         public void SlewToCoordinates(double rightAscension, double declination)
@@ -338,11 +340,53 @@ namespace ASCOM.CCDASTROTemma.Telescope
             if (isParked)
                 throw new ParkedException("The mount is parked.");
 
+            if (isSlewing)
+                return;
+
+            if (rightAscension < 0.0 || rightAscension >= 24.0)
+                throw new InvalidValueException(
+                    "RightAscension", rightAscension.ToString(), "0 to less than 24 hours");
+
+            if (declination < -90.0 || declination > 90.0)
+                throw new InvalidValueException(
+                    "Declination", declination.ToString(), "-90 to +90 degrees");
+
             TargetRightAscension = rightAscension;
             TargetDeclination = declination;
 
-            SendCommand(TemmaProtocol.BuildSlewCommand(rightAscension, declination));
-            isSlewing = true;
+            // Working VB6 GOTO sequence:
+            // clear buffers -> T + current LST (blind) -> 100 ms ->
+            // P + target coordinates -> expect R0 success or R1..R5 error.
+            string lst = FormatTemmaSiderealTime(SiderealTime);
+
+            serial.ClearBuffers();
+            SendBlindTemmaCommand("T" + lst);
+            Thread.Sleep(100);
+
+            string response = SendCommand(
+                TemmaProtocol.BuildSlewCommand(rightAscension, declination));
+
+            string status = (response ?? string.Empty).Trim();
+
+            switch (status)
+            {
+                case "R0":
+                    isSlewing = true;
+                    break;
+                case "R1":
+                    throw new InvalidOperationException("Temma GOTO failed: RA format/error (R1).");
+                case "R2":
+                    throw new InvalidOperationException("Temma GOTO failed: Declination format/error (R2).");
+                case "R3":
+                    throw new InvalidOperationException("Temma GOTO failed: Too many digits (R3).");
+                case "R4":
+                    throw new InvalidOperationException("Temma GOTO failed: Target is below the horizon (R4).");
+                case "R5":
+                    throw new InvalidOperationException("Temma GOTO failed: Mount is on standby (R5).");
+                default:
+                    throw new InvalidOperationException(
+                        "Temma GOTO returned an unexpected response: " + EscapeForLog(response));
+            }
         }
 
         public void SlewToTarget()
@@ -385,7 +429,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             // In this project BuildSlewCommand() is the existing D + RA/Dec formatter.
             // The working VB6 driver also uses a D command for the final Sync transmit.
-            string syncCommand = TemmaProtocol.BuildSlewCommand(
+            string syncCommand = TemmaProtocol.BuildSyncCommand(
                 rightAscension, declination);
 
             string framedSyncCommand = syncCommand.EndsWith("\r\n")
@@ -709,7 +753,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public double Azimuth { get { return 0.0; } }
         public bool CanFindHome { get { return false; } }
-        public bool CanMoveAxis(TelescopeAxes axis) { return false; }
+        public bool CanMoveAxis(TelescopeAxes axis) { return axis != TelescopeAxes.axisTertiary; }
         public bool CanPark { get { return true; } }
         public bool CanPulseGuide { get { return true; } }
         public bool CanSetDeclinationRate { get { return false; } }
@@ -734,20 +778,79 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public double GuideRateDeclination { get { return settings.GuideRateDec; } set { settings.GuideRateDec = value; } }
         public double GuideRateRightAscension { get { return settings.GuideRateRA; } set { settings.GuideRateRA = value; } }
         public bool IsPulseGuiding { get { return pulseGuiding; } }
-        public void MoveAxis(TelescopeAxes axis, double rate) { }
+        public void MoveAxis(TelescopeAxes axis, double rate)
+        {
+            CheckConnected("MoveAxis");
+
+            if (isParked)
+                throw new ParkedException("The mount is parked.");
+
+            if (axis == TelescopeAxes.axisTertiary)
+                throw new MethodNotImplementedException("MoveAxis axisTertiary");
+
+            if (rate == 0.0)
+            {
+                SendBlindTemmaCommand("M@");
+                isSlewing = false;
+                return;
+            }
+
+            // Match the working VB6 direction mapping.
+            // Low/high speed selection is based on half of the advertised
+            // maximum rate for the selected axis.
+            double maxRate = 0.0;
+            foreach (IRate r in AxisRates(axis))
+                if (r.Maximum > maxRate) maxRate = r.Maximum;
+
+            bool highSpeed = maxRate > 0.0 && Math.Abs(rate) >= (maxRate / 2.0);
+            string command;
+
+            if (axis == TelescopeAxes.axisSecondary)
+                command = rate > 0.0 ? (highSpeed ? "MI" : "MH")
+                                     : (highSpeed ? "MQ" : "MP");
+            else
+                command = rate > 0.0 ? (highSpeed ? "ME" : "MB")
+                                     : (highSpeed ? "MC" : "MD");
+
+            SendBlindTemmaCommand(command);
+            isSlewing = true;
+        }
 
         public void PulseGuide(GuideDirections direction, int duration)
         {
             CheckConnected("PulseGuide");
 
+            if (isParked)
+                throw new ParkedException("The mount is parked.");
+
             if (duration < 0)
                 throw new InvalidValueException("Duration must be zero or greater.");
+
+            string directionCommand;
+            switch (direction)
+            {
+                case GuideDirections.guideNorth: directionCommand = "MH"; break;
+                case GuideDirections.guideSouth: directionCommand = "MP"; break;
+                case GuideDirections.guideEast:  directionCommand = "MD"; break;
+                case GuideDirections.guideWest:  directionCommand = "MB"; break;
+                default:
+                    throw new InvalidValueException("Unsupported guide direction.");
+            }
 
             pulseGuiding = true;
             try
             {
-                LogMessage("PulseGuide", string.Format("Direction={0}, Duration={1} ms", direction, duration));
-                Thread.Sleep(duration);
+                int remaining = Math.Max(duration, 100);
+
+                // The working VB6 driver limits each continuous pulse to 3000 ms.
+                while (remaining > 0)
+                {
+                    int segment = Math.Min(remaining, 3000);
+                    SendBlindTemmaCommand(directionCommand);
+                    Thread.Sleep(segment);
+                    SendBlindTemmaCommand("M@");
+                    remaining -= segment;
+                }
             }
             finally
             {
@@ -772,10 +875,16 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void Park()
         {
             CheckConnected("Park");
+
+            if (isSlewing)
+                AbortSlew();
+
+            if (tracking)
+                Tracking = false;
+
             isParked = true;
             settings.IsParked = true;
-            isSlewing = false;
-            LogMessage("Park", "Mount marked as parked.");
+            LogMessage("Park", "Mount stopped, tracking disabled, and driver state marked parked.");
         }
 
         public void Unpark()
