@@ -1,0 +1,6 @@
+Version 1.0.6 compile correction
+
+The slew-start verification worker now uses the driver's existing Connected
+property instead of the nonexistent connected field.
+
+No protocol or functional changes beyond this compile correction.

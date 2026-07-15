@@ -1,0 +1,14 @@
+Version 1.0.6
+
+Adds non-blocking slew-start verification:
+- Saves pre-slew RA/Dec.
+- Requires initial R0 from the normal Temma T/P GOTO.
+- Returns immediately from SlewToCoordinatesAsync.
+- Background worker waits 2.5 seconds and checks reported coordinate movement.
+- Retries the complete T/P GOTO sequence if no movement is detected.
+- Maximum five accepted GOTO attempts.
+- Sends PS and clears Slewing after five failures.
+- Handles RA 0h/24h wrap.
+- Cancels stale verification on AbortSlew, Park, Disconnect, or a newer slew.
+- Logs all verification and retry activity under SlewVerify.
+- Does not implement old High Precision Slew; modern clients handle plate-solve centering.

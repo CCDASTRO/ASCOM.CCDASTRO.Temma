@@ -14,6 +14,7 @@ using System;
 using System.Collections;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace ASCOM.CCDASTROTemma.Telescope
@@ -35,6 +36,13 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private bool tracking;
         private bool isParked;
         private bool pulseGuiding;
+
+        private int slewVerificationGeneration = 0;
+        private readonly object slewVerificationLock = new object();
+        private const int SlewStartVerificationDelayMs = 2500;
+        private const int SlewStartMaximumAttempts = 5;
+        private const double SlewStartRaMovementThresholdHours = 0.0002;
+        private const double SlewStartDecMovementThresholdDegrees = 0.002;
 
         private TraceLogger tl;
         private Serial serial;
@@ -221,7 +229,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public string Description { get { return RegistrationDescription; } }
         public string DriverInfo { get { return "Takahashi Temma Telescope Driver (C# port)"; } }
-        public string DriverVersion { get { return "1.0.5"; } }
+        public string DriverVersion { get { return "1.0.6"; } }
         public short InterfaceVersion { get { return 4; } }
         public string Name { get { return "Takahashi Temma"; } }
 
@@ -317,6 +325,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void AbortSlew()
         {
             CheckConnected("AbortSlew");
+            CancelSlewStartVerification();
             SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
             isSlewing = false;
             Thread.Sleep(500);
@@ -336,57 +345,28 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void SlewToCoordinatesAsync(double rightAscension, double declination)
         {
             CheckConnected("SlewToCoordinatesAsync");
-
-            if (isParked)
-                throw new ParkedException("The mount is parked.");
-
-            if (isSlewing)
-                return;
-
+            if (isParked) throw new ParkedException("The mount is parked.");
+            if (isSlewing) return;
             if (rightAscension < 0.0 || rightAscension >= 24.0)
-                throw new InvalidValueException(
-                    "RightAscension", rightAscension.ToString(), "0 to less than 24 hours");
-
+                throw new InvalidValueException("RightAscension", rightAscension.ToString(), "0 to less than 24 hours");
             if (declination < -90.0 || declination > 90.0)
-                throw new InvalidValueException(
-                    "Declination", declination.ToString(), "-90 to +90 degrees");
+                throw new InvalidValueException("Declination", declination.ToString(), "-90 to +90 degrees");
 
+            double startRa = currentRightAscension;
+            double startDec = currentDeclination;
             TargetRightAscension = rightAscension;
             TargetDeclination = declination;
 
-            // Working VB6 GOTO sequence:
-            // clear buffers -> T + current LST (blind) -> 100 ms ->
-            // P + target coordinates -> expect R0 success or R1..R5 error.
-            string lst = FormatTemmaSiderealTime(SiderealTime);
+            CancelSlewStartVerification();
+            SendTemmaGotoOrThrow(rightAscension, declination);
+            isSlewing = true;
 
-            serial.ClearBuffers();
-            SendBlindTemmaCommand("T" + lst);
-            Thread.Sleep(100);
+            int generation;
+            lock (slewVerificationLock)
+                generation = ++slewVerificationGeneration;
 
-            string response = SendCommand(
-                TemmaProtocol.BuildSlewCommand(rightAscension, declination));
-
-            string status = (response ?? string.Empty).Trim();
-
-            switch (status)
-            {
-                case "R0":
-                    isSlewing = true;
-                    break;
-                case "R1":
-                    throw new InvalidOperationException("Temma GOTO failed: RA format/error (R1).");
-                case "R2":
-                    throw new InvalidOperationException("Temma GOTO failed: Declination format/error (R2).");
-                case "R3":
-                    throw new InvalidOperationException("Temma GOTO failed: Too many digits (R3).");
-                case "R4":
-                    throw new InvalidOperationException("Temma GOTO failed: Target is below the horizon (R4).");
-                case "R5":
-                    throw new InvalidOperationException("Temma GOTO failed: Mount is on standby (R5).");
-                default:
-                    throw new InvalidOperationException(
-                        "Temma GOTO returned an unexpected response: " + EscapeForLog(response));
-            }
+            Task.Run(() => VerifySlewStartedAsync(
+                generation, startRa, startDec, rightAscension, declination));
         }
 
         public void SlewToTarget()
@@ -686,6 +666,89 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         #region Utility Methods
 
+        private void CancelSlewStartVerification()
+        {
+            lock (slewVerificationLock) slewVerificationGeneration++;
+        }
+
+        private bool IsSlewVerificationCurrent(int generation)
+        {
+            lock (slewVerificationLock) return generation == slewVerificationGeneration;
+        }
+
+        private void SendTemmaGotoOrThrow(double rightAscension, double declination)
+        {
+            string lst = FormatTemmaSiderealTime(SiderealTime);
+            serial.ClearBuffers();
+            SendBlindTemmaCommand("T" + lst);
+            Thread.Sleep(100);
+
+            string response = SendCommand(TemmaProtocol.BuildSlewCommand(rightAscension, declination));
+            string status = (response ?? string.Empty).Trim();
+            switch (status)
+            {
+                case "R0": return;
+                case "R1": throw new InvalidOperationException("Temma GOTO failed: RA format/error (R1).");
+                case "R2": throw new InvalidOperationException("Temma GOTO failed: Declination format/error (R2).");
+                case "R3": throw new InvalidOperationException("Temma GOTO failed: Too many digits (R3).");
+                case "R4": throw new InvalidOperationException("Temma GOTO failed: Target is below the horizon (R4).");
+                case "R5": throw new InvalidOperationException("Temma GOTO failed: Mount is on standby (R5).");
+                default: throw new InvalidOperationException("Temma GOTO returned an unexpected response: " + EscapeForLog(response));
+            }
+        }
+
+        private async Task VerifySlewStartedAsync(int generation, double startRa, double startDec, double targetRa, double targetDec)
+        {
+            try
+            {
+                for (int attempt = 1; attempt <= SlewStartMaximumAttempts; attempt++)
+                {
+                    await Task.Delay(SlewStartVerificationDelayMs).ConfigureAwait(false);
+
+                    if (!IsSlewVerificationCurrent(generation) || !Connected || isParked || !isSlewing)
+                        return;
+
+                    double raMoved = Math.Abs(currentRightAscension - startRa);
+                    if (raMoved > 12.0) raMoved = 24.0 - raMoved;
+                    double decMoved = Math.Abs(currentDeclination - startDec);
+
+                    if (raMoved >= SlewStartRaMovementThresholdHours ||
+                        decMoved >= SlewStartDecMovementThresholdDegrees)
+                    {
+                        LogMessage("SlewVerify", string.Format(
+                            "Mount movement confirmed on attempt {0}. RA moved {1:F6} h, Dec moved {2:F6} deg.",
+                            attempt, raMoved, decMoved));
+                        return;
+                    }
+
+                    LogMessage("SlewVerify", string.Format(
+                        "No movement after attempt {0}; retrying complete Temma T/P GOTO sequence.", attempt));
+
+                    if (attempt < SlewStartMaximumAttempts)
+                    {
+                        if (!IsSlewVerificationCurrent(generation)) return;
+                        SendTemmaGotoOrThrow(targetRa, targetDec);
+                        isSlewing = true;
+                    }
+                }
+
+                if (!IsSlewVerificationCurrent(generation)) return;
+                LogMessage("SlewVerify", "Mount failed to begin moving after 5 accepted GOTO attempts. Sending PS.");
+                SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
+                isSlewing = false;
+            }
+            catch (Exception ex)
+            {
+                if (IsSlewVerificationCurrent(generation))
+                {
+                    isSlewing = false;
+                    LogMessage("SlewVerify", "Slew-start verification failed: " + ex);
+                    try { SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand()); }
+                    catch (Exception abortEx) { LogMessage("SlewVerify", "Abort also failed: " + abortEx.Message); }
+                }
+            }
+        }
+
         private void SendBlindTemmaCommand(string command)
         {
             CheckConnected("SendBlindTemmaCommand");
@@ -875,6 +938,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void Park()
         {
             CheckConnected("Park");
+            CancelSlewStartVerification();
 
             if (isSlewing)
                 AbortSlew();
