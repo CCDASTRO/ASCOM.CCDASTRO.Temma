@@ -405,9 +405,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 throw new InvalidValueException(
                     "Declination", declination.ToString(), "-90 to +90 degrees");
 
-            // Match the proven VB6 SyncToCoordinates sequence:
             // Clear buffers, send T + LST twice with 100 ms delays,
-            // then blindly transmit the D coordinate command.
+            // then send D. Real Temma controllers acknowledge D with R0.
             string lst = FormatTemmaSiderealTime(SiderealTime);
 
             serial.ClearBuffers();
@@ -422,14 +421,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             string syncCommand = TemmaProtocol.BuildSyncCommand(
                 rightAscension, declination);
 
-            string framedSyncCommand = syncCommand.EndsWith("\r\n")
-                ? syncCommand
-                : syncCommand + "\r\n";
-
-            LogMessage("Sync TX", EscapeForLog(framedSyncCommand));
-            serial.Transmit(framedSyncCommand);
-
-            serial.ClearBuffers();
+            SendTemmaSyncOrThrow(syncCommand, "coordinate sync");
             System.Threading.Thread.Sleep(100);
 
             TargetRightAscension = rightAscension;
@@ -838,9 +830,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
                         SendBlindTemmaCommand("Z");
                         Thread.Sleep(100);
 
-                        SendBlindTemmaCommand("D" + lst + latitude);
-
-                        serial.ClearBuffers();
+                        // D returns R0 on a real Temma. Consume and validate
+                        // that acknowledgement before issuing another command.
+                        SendTemmaSyncOrThrow("D" + lst + latitude,
+                            "startup synchronization");
                         Thread.Sleep(100);
                         break;
                     }
@@ -996,6 +989,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             LogMessage("Blind TX", EscapeForLog(framedCommand));
             serial.Transmit(framedCommand);
+        }
+
+        private void SendTemmaSyncOrThrow(string syncCommand, string operation)
+        {
+            string response = (SendCommand(syncCommand) ?? string.Empty).Trim();
+            if (!string.Equals(response, "R0", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Temma " + operation + " failed; expected R0, received " +
+                    EscapeForLog(response));
         }
 
         private bool QueryTrackingStateOrThrow()
