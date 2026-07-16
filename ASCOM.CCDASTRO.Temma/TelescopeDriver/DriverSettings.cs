@@ -128,6 +128,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public bool ParkCurrentPosition { get { return ReadBool("ParkCurrentPosition", true); } set { WriteBool("ParkCurrentPosition", value); } }
         public double ParkAltitude { get { return ReadDouble("ParkAltitude", 0); } set { WriteDouble("ParkAltitude", value); } }
         public double ParkAzimuth { get { return ReadDouble("ParkAzimuth", 0); } set { WriteDouble("ParkAzimuth", value); } }
+        public double ParkHourAngle { get { return ReadDouble("ParkHourAngle", 0); } set { WriteDouble("ParkHourAngle", value); } }
+        public string ParkPierSide { get { return ReadString("ParkPierSide", "Unknown"); } set { WriteString("ParkPierSide", value); } }
+        public bool TrackingWasEnabledBeforePark { get { return ReadBool("TrackingWasEnabledBeforePark", true); } set { WriteBool("TrackingWasEnabledBeforePark", value); } }
         public bool UnparkOnReconnect { get { return ReadBool("UnparkOnReconnect", false); } set { WriteBool("UnparkOnReconnect", value); } }
         public bool SendRate { get { return ReadBool("SendRate", false); } set { WriteBool("SendRate", value); } }
         public string Orientation { get { return ReadString("Orientation", "CounterweightDown"); } set { WriteString("Orientation", value); } }

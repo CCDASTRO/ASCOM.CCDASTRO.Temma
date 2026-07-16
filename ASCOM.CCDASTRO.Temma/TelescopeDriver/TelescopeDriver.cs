@@ -229,7 +229,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public string Description { get { return RegistrationDescription; } }
         public string DriverInfo { get { return "Takahashi Temma Telescope Driver (C# port)"; } }
-        public string DriverVersion { get { return "1.0.7"; } }
+        public string DriverVersion
+        {
+            get { return typeof(Telescope).Assembly.GetName().Version.ToString(3); }
+        }
         public short InterfaceVersion { get { return 4; } }
         public string Name { get { return "Takahashi Temma"; } }
 
@@ -554,9 +557,13 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 currentRightAscension = ra;
                 currentDeclination = dec;
 
-                // Apply the startup synchronization method selected by the
-                // existing Setup Dialog orientation radio buttons.
-                ApplyInitialMountSynchronization();
+                // A parked mount's physical position is restored by Unpark()
+                // from its saved Alt/Az reference. Do not overwrite that
+                // reference with normal power-on synchronization.
+                if (!isParked)
+                    ApplyInitialMountSynchronization();
+                else
+                    LogMessage("Connect", "Mount is parked; startup synchronization deferred until Unpark.");
 
                 ConfigureMountSpeed();
                 ConfigureAxisRates();
@@ -580,15 +587,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 connectionInitializing = false;
             }
 
-            tracking = !settings.TrackingOffOnConnect;
+            // A persisted parked mount was explicitly stopped by Park(). Keep
+            // the software state stopped so Unpark can restore tracking with
+            // STN-OFF when it was enabled before parking.
+            tracking = isParked ? false : !settings.TrackingOffOnConnect;
             isSlewing = false;
             lastCoordinateUpdate = DateTime.MinValue;
 
             if (isParked && settings.UnparkOnReconnect)
-            {
-                isParked = false;
-                settings.IsParked = false;
-            }
+                Unpark();
 
             LogMessage("Connect", "Successfully connected to Temma mount.");
         }
@@ -875,6 +882,82 @@ namespace ASCOM.CCDASTROTemma.Telescope
             return hours;
         }
 
+        private static double NormalizeSignedHours(double hours)
+        {
+            hours = NormalizeHours(hours);
+            return hours > 12.0 ? hours - 24.0 : hours;
+        }
+
+        private static double DegreesToRadians(double degrees) { return degrees * Math.PI / 180.0; }
+        private static double RadiansToDegrees(double radians) { return radians * 180.0 / Math.PI; }
+
+        // Convert a topocentric equatorial coordinate to the physical mount
+        // direction. Azimuth is degrees clockwise from north.
+        private void EquatorialToHorizontal(double raHours, double decDegrees,
+                                            out double azimuthDegrees, out double altitudeDegrees)
+        {
+            double latitude = DegreesToRadians(SiteLatitude);
+            double declination = DegreesToRadians(decDegrees);
+            double hourAngle = DegreesToRadians(NormalizeSignedHours(SiderealTime - raHours) * 15.0);
+
+            double sinAltitude = Math.Sin(declination) * Math.Sin(latitude) +
+                                 Math.Cos(declination) * Math.Cos(latitude) * Math.Cos(hourAngle);
+            sinAltitude = Math.Max(-1.0, Math.Min(1.0, sinAltitude));
+            double altitude = Math.Asin(sinAltitude);
+
+            double azimuth = Math.Atan2(-Math.Sin(hourAngle) * Math.Cos(declination),
+                                         Math.Sin(declination) * Math.Cos(latitude) -
+                                         Math.Cos(declination) * Math.Sin(latitude) * Math.Cos(hourAngle));
+            azimuthDegrees = RadiansToDegrees(azimuth);
+            if (azimuthDegrees < 0.0) azimuthDegrees += 360.0;
+            altitudeDegrees = RadiansToDegrees(altitude);
+        }
+
+        // Reconstruct the sky coordinate for a mount that has remained fixed
+        // at a saved physical Alt/Az position while the sky rotates.
+        private void HorizontalToEquatorial(double azimuthDegrees, double altitudeDegrees,
+                                            out double raHours, out double decDegrees)
+        {
+            double latitude = DegreesToRadians(SiteLatitude);
+            double azimuth = DegreesToRadians(azimuthDegrees);
+            double altitude = DegreesToRadians(altitudeDegrees);
+
+            double sinDeclination = Math.Sin(altitude) * Math.Sin(latitude) +
+                                    Math.Cos(altitude) * Math.Cos(latitude) * Math.Cos(azimuth);
+            sinDeclination = Math.Max(-1.0, Math.Min(1.0, sinDeclination));
+            double declination = Math.Asin(sinDeclination);
+
+            double hourAngle = Math.Atan2(-Math.Sin(azimuth) * Math.Cos(altitude),
+                                          Math.Sin(altitude) * Math.Cos(latitude) -
+                                          Math.Cos(altitude) * Math.Sin(latitude) * Math.Cos(azimuth));
+            raHours = NormalizeHours(SiderealTime - RadiansToDegrees(hourAngle) / 15.0);
+            decDegrees = RadiansToDegrees(declination);
+        }
+
+        private void ReadMountCoordinatesOrThrow()
+        {
+            string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
+            double ra;
+            double dec;
+            if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
+                throw new InvalidOperationException("Temma returned invalid coordinates: " + EscapeForLog(response));
+            currentRightAscension = ra;
+            currentDeclination = dec;
+            lastCoordinateUpdate = DateTime.UtcNow;
+        }
+
+        private PierSide ReadPierSide()
+        {
+            string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
+            string trimmed = (response ?? string.Empty).Trim();
+            if (trimmed.Length > 13)
+            {
+                if (trimmed[13] == 'E') return PierSide.pierEast;
+                if (trimmed[13] == 'W') return PierSide.pierWest;
+            }
+            return PierSide.pierUnknown;
+        }
+
         private static string FormatTemmaLatitude(double latitudeDegrees)
         {
             string sign = latitudeDegrees < 0.0 ? "-" : "+";
@@ -934,7 +1017,18 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         #region Required ITelescopeV4 Members
 
-        public double Altitude { get { return 0.0; } }
+        public double Altitude
+        {
+            get
+            {
+                CheckConnected("Altitude");
+                UpdateCoordinates();
+                double azimuth;
+                double altitude;
+                EquatorialToHorizontal(currentRightAscension, currentDeclination, out azimuth, out altitude);
+                return altitude;
+            }
+        }
         public double ApertureArea { get { return 0.0; } }
         public double ApertureDiameter { get { return settings.Aperture; } }
         public bool AtHome { get { return false; } }
@@ -956,7 +1050,18 @@ namespace ASCOM.CCDASTROTemma.Telescope
             return new AxisRates(axis);
         }
 
-        public double Azimuth { get { return 0.0; } }
+        public double Azimuth
+        {
+            get
+            {
+                CheckConnected("Azimuth");
+                UpdateCoordinates();
+                double azimuth;
+                double altitude;
+                EquatorialToHorizontal(currentRightAscension, currentDeclination, out azimuth, out altitude);
+                return azimuth;
+            }
+        }
         public bool CanFindHome { get { return false; } }
         public bool CanMoveAxis(TelescopeAxes axis) { return axis != TelescopeAxes.axisTertiary; }
         public bool CanPark { get { return true; } }
@@ -1064,8 +1169,21 @@ namespace ASCOM.CCDASTROTemma.Telescope
         }
 
         public double RightAscensionRate { get { return 0.0; } set { } }
-        public void SetPark() { }
-        public PierSide SideOfPier { get { return PierSide.pierUnknown; } set { } }
+        public void SetPark()
+        {
+            CheckConnected("SetPark");
+            if (isSlewing) throw new InvalidOperationException("Cannot set the park position while slewing.");
+
+            ReadMountCoordinatesOrThrow();
+            double azimuth;
+            double altitude;
+            EquatorialToHorizontal(currentRightAscension, currentDeclination, out azimuth, out altitude);
+            settings.ParkAzimuth = azimuth;
+            settings.ParkAltitude = altitude;
+            settings.ParkCurrentPosition = false;
+            LogMessage("SetPark", string.Format("Saved park position: Az={0:F4}, Alt={1:F4}", azimuth, altitude));
+        }
+        public PierSide SideOfPier { get { return ReadPierSide(); } set { throw new MethodNotImplementedException("SideOfPier set"); } }
         public double SiteElevation { get { return settings.SiteElevation; } set { settings.SiteElevation = value; } }
         public double SiteLatitude { get { return settings.SiteLatitude; } set { settings.SiteLatitude = value; } }
         public double SiteLongitude { get { return settings.SiteLongitude; } set { settings.SiteLongitude = value; } }
@@ -1080,25 +1198,76 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void Park()
         {
             CheckConnected("Park");
+            if (isParked) return;
             CancelSlewStartVerification();
 
             if (isSlewing)
                 AbortSlew();
 
-            if (tracking)
-                Tracking = false;
+            // ParkCurrentPosition matches the old driver's "Park Current"
+            // option. Otherwise move to the configured physical park position.
+            if (!settings.ParkCurrentPosition)
+            {
+                double parkRa;
+                double parkDec;
+                HorizontalToEquatorial(settings.ParkAzimuth, settings.ParkAltitude, out parkRa, out parkDec);
+                SlewToCoordinates(parkRa, parkDec);
+            }
+
+            ReadMountCoordinatesOrThrow();
+            double actualAzimuth;
+            double actualAltitude;
+            EquatorialToHorizontal(currentRightAscension, currentDeclination, out actualAzimuth, out actualAltitude);
+            settings.ParkAzimuth = actualAzimuth;
+            settings.ParkAltitude = actualAltitude;
+            settings.ParkHourAngle = NormalizeSignedHours(SiderealTime - currentRightAscension);
+            settings.ParkPierSide = ReadPierSide().ToString();
+            settings.TrackingWasEnabledBeforePark = tracking;
+
+            if (tracking) Tracking = false;
 
             isParked = true;
             settings.IsParked = true;
-            LogMessage("Park", "Mount stopped, tracking disabled, and driver state marked parked.");
+            LogMessage("Park", string.Format("Parked at Az={0:F4}, Alt={1:F4}, HA={2:F4}, Pier={3}.",
+                settings.ParkAzimuth, settings.ParkAltitude, settings.ParkHourAngle, settings.ParkPierSide));
         }
 
         public void Unpark()
         {
             CheckConnected("Unpark");
-            isParked = false;
-            settings.IsParked = false;
-            LogMessage("Unpark", "Mount unparked.");
+            if (!isParked) return;
+
+            try
+            {
+                // A Temma has no persistent park command. Restore its celestial
+                // reference from the saved physical Alt/Az at the current LST.
+                double referenceRa;
+                double referenceDec;
+                HorizontalToEquatorial(settings.ParkAzimuth, settings.ParkAltitude, out referenceRa, out referenceDec);
+
+                PierSide savedPier;
+                if (!Enum.TryParse(settings.ParkPierSide, out savedPier))
+                    savedPier = PierSide.pierUnknown;
+                PierSide currentPier = ReadPierSide();
+                if (savedPier != PierSide.pierUnknown && currentPier != PierSide.pierUnknown && currentPier != savedPier)
+                    SendBlindTemmaCommand("PT");
+
+                // SyncToCoordinates deliberately rejects a parked mount.
+                // Clear only the in-memory guard until the restore succeeds.
+                isParked = false;
+                SyncToCoordinates(referenceRa, referenceDec);
+
+                settings.IsParked = false;
+                if (settings.TrackingWasEnabledBeforePark)
+                    Tracking = true;
+                LogMessage("Unpark", string.Format("Restored RA={0:F6}, Dec={1:F6} from saved park position.", referenceRa, referenceDec));
+            }
+            catch
+            {
+                isParked = true;
+                settings.IsParked = true;
+                throw;
+            }
         }
 
         #endregion
