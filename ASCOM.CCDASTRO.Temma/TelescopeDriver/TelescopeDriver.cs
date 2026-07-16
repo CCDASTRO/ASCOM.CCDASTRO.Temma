@@ -329,17 +329,12 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CheckConnected("AbortSlew");
             CancelSlewStartVerification();
             SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
-            Thread.Sleep(250);
-
-            // PS is blind. Confirm that the controller accepted it: S0 means
-            // the GOTO was cancelled, while S1 means it is still in progress.
-            string abortStatus = (SendCommand("S") ?? string.Empty).Trim();
-            if (!string.Equals(abortStatus, "S0", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    "Temma abort was not confirmed; expected S0, received " +
-                    EscapeForLog(abortStatus));
-
             isSlewing = false;
+
+            // PS is the only reliable abort command across the tested Temma
+            // controllers. Some firmwares do not reply to the documented S
+            // status query, so do not block a subsequent slew waiting for it.
+            Thread.Sleep(500);
         }
 
         public void SlewToCoordinates(double rightAscension, double declination)
