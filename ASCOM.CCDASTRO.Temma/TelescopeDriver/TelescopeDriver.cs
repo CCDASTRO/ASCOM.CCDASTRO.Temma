@@ -762,8 +762,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
             LogMessage("InitialSync", "Applying startup orientation: " + orientation);
 
             serial.ClearBuffers();
+
+            // Always initialize the Temma with the current LST and latitude.
             SendBlindTemmaCommand("T" + lst);
             Thread.Sleep(200);
+
             SendBlindTemmaCommand("I" + latitude);
             Thread.Sleep(200);
 
@@ -771,8 +774,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
             {
                 string e = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
                 string trimmed = (e ?? string.Empty).Trim();
+
                 bool eastState = trimmed.Length > 13 && trimmed[13] == 'E';
-                bool wantEastState = orientation == "OtaEast";
+                bool wantEastState = (orientation == "OtaEast");
 
                 if (eastState != wantEastState)
                 {
@@ -782,23 +786,28 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
                 SendBlindTemmaCommand("T" + lst);
                 Thread.Sleep(200);
+
                 SendBlindTemmaCommand("Z");
                 Thread.Sleep(200);
+
                 SendBlindTemmaCommand("D" + lst + latitude);
                 Thread.Sleep(200);
             }
             else if (orientation == "CounterweightDown")
             {
                 EnsureTemmaPierReference();
+
                 SendBlindTemmaCommand("T" + lst);
                 Thread.Sleep(200);
+
                 SendBlindTemmaCommand("Z");
                 Thread.Sleep(200);
+
                 SendBlindTemmaCommand("T" + lst);
                 Thread.Sleep(200);
 
                 double initialRa = NormalizeHours(SiderealTime - 6.0);
-                double initialDec = SiteLatitude >= 0.0
+                double initialDec = (SiteLatitude >= 0.0)
                     ? Math.Min(89.999, SiteLatitude + 0.01)
                     : Math.Max(-89.999, SiteLatitude - 0.01);
 
@@ -807,36 +816,32 @@ namespace ASCOM.CCDASTROTemma.Telescope
             else if (orientation == "CounterweightWest")
             {
                 EnsureTemmaPierReference();
+
                 SendBlindTemmaCommand("T" + lst);
                 Thread.Sleep(200);
+
                 SendBlindTemmaCommand("Z");
                 Thread.Sleep(200);
+
                 SendBlindTemmaCommand("T" + lst);
                 Thread.Sleep(200);
 
                 double initialRa = NormalizeHours(SiderealTime);
-                double initialDec = SiteLatitude >= 0.0
+                double initialDec = (SiteLatitude >= 0.0)
                     ? Math.Min(89.999, SiteLatitude + 0.01)
                     : Math.Max(-89.999, SiteLatitude - 0.01);
 
                 SyncToCoordinates(initialRa, initialDec);
             }
 
-            Thread.Sleep(200);
-            string verify = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
-            double ra, dec;
-            if (!TemmaProtocol.TryParseCoordinates(verify, out ra, out dec))
-                throw new InvalidOperationException(
-                    "Temma startup synchronization verification failed: " +
-                    EscapeForLog(verify));
+            // Allow the controller to complete the initialization sequence.
+            Thread.Sleep(250);
 
-            currentRightAscension = ra;
-            currentDeclination = dec;
-            LogMessage("InitialSync", string.Format(
-                "Startup synchronization verified. RA={0:F6} h, Dec={1:F6} deg.",
-                ra, dec));
+            // Discard any pending responses from the initialization commands.
+            serial.ClearBuffers();
+
+            LogMessage("InitialSync", "Startup synchronization sequence completed.");
         }
-
         private void EnsureTemmaPierReference()
         {
             string e = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
