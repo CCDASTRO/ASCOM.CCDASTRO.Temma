@@ -91,7 +91,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         }
 
         /// <summary>
-        /// VB6 TAKhms equivalent: HHMMtt where tt is hundredths of a minute.
+        /// Formats Right Ascension as Temma HHMMtt,
+        /// where tt is hundredths of a minute.
+        /// Equivalent to the VB6 TAKhms() routine.
         /// </summary>
         public static string FormatRa(double rightAscensionHours)
         {
@@ -111,7 +113,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         }
 
         /// <summary>
-        /// VB6 TAKdms equivalent: +/-DDMMt where t is tenths of an arcminute.
+        /// Formats Declination as Temma ±DDMMt,
+        /// where t is tenths of a minute.
+        /// Equivalent to the VB6 TAKdms() routine.
         /// </summary>
         public static string FormatDec(double declinationDegrees)
         {

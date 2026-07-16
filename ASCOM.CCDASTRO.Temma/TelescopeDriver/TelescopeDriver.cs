@@ -407,8 +407,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             SendBlindTemmaCommand("T" + lst);
             System.Threading.Thread.Sleep(100);
 
-            // In this project BuildSlewCommand() is the existing D + RA/Dec formatter.
-            // The working VB6 driver also uses a D command for the final Sync transmit.
+            // Build the Temma Sync (D) command.
             string syncCommand = TemmaProtocol.BuildSyncCommand(
                 rightAscension, declination);
 
