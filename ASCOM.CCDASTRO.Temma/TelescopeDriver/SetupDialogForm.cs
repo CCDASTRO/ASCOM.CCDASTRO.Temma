@@ -72,13 +72,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             chkTrace.Checked = settings.TraceEnabled;
             chkUnparkOnReconnect.Checked = settings.UnparkOnReconnect;
-            chkKeepLastSync.Checked = settings.KeepLastSync;
-            chkAskAtStart.Checked = settings.AskAtStart;
             chkSendRate.Checked = settings.SendRate;
-            chkHighPrecisionGoto.Checked = settings.HighPrecisionGoto;
-            chkTrackingOffOnConnect.Checked = settings.TrackingOffOnConnect;
-            chkWarnBeforeMeridianFlip.Checked = settings.WarnBeforeMeridianFlip;
-
+            
             SetNumeric(nudGuideRateRA, settings.GuideRateRA);
             SetNumeric(nudGuideRateDec, settings.GuideRateDec);
             SetNumeric(nudSiteElevation, settings.SiteElevation);
@@ -135,13 +130,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
                 settings.TraceEnabled = chkTrace.Checked;
                 settings.UnparkOnReconnect = chkUnparkOnReconnect.Checked;
-                settings.KeepLastSync = chkKeepLastSync.Checked;
-                settings.AskAtStart = chkAskAtStart.Checked;
                 settings.SendRate = chkSendRate.Checked;
-                settings.HighPrecisionGoto = chkHighPrecisionGoto.Checked;
-                settings.TrackingOffOnConnect = chkTrackingOffOnConnect.Checked;
-                settings.WarnBeforeMeridianFlip = chkWarnBeforeMeridianFlip.Checked;
-
+                
                 settings.GuideRateRA = (double)nudGuideRateRA.Value;
                 settings.GuideRateDec = (double)nudGuideRateDec.Value;
                 settings.SiteElevation = (double)nudSiteElevation.Value;
@@ -273,5 +263,21 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private void nudGuideRateDec_ValueChanged(object sender, EventArgs e) { }
         private void label12_Click(object sender, EventArgs e) { }
         private void SetupDialogForm_Load(object sender, EventArgs e) { }
+
+        
+
+        private void grpTelescopeSetup_Enter(object sender, EventArgs e)
+        {
+
+        }
+
+        
+
+        private void SetupDialogForm_Load_1(object sender, EventArgs e)
+        {
+
+        }
+
+        
     }
 }

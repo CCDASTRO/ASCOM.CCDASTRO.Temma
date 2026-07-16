@@ -34,12 +34,7 @@
 
         private System.Windows.Forms.CheckBox chkTrace;
         private System.Windows.Forms.CheckBox chkUnparkOnReconnect;
-        private System.Windows.Forms.CheckBox chkKeepLastSync;
-        private System.Windows.Forms.CheckBox chkAskAtStart;
         private System.Windows.Forms.CheckBox chkSendRate;
-        private System.Windows.Forms.CheckBox chkHighPrecisionGoto;
-        private System.Windows.Forms.CheckBox chkTrackingOffOnConnect;
-        private System.Windows.Forms.CheckBox chkWarnBeforeMeridianFlip;
 
         private System.Windows.Forms.RadioButton optParkCurrentPosition;
         private System.Windows.Forms.RadioButton optParkSlewToPosition;
@@ -101,8 +96,6 @@
             this.optOtaWest = new System.Windows.Forms.RadioButton();
             this.optCounterweightDown = new System.Windows.Forms.RadioButton();
             this.optCounterweightWest = new System.Windows.Forms.RadioButton();
-            this.chkKeepLastSync = new System.Windows.Forms.CheckBox();
-            this.chkAskAtStart = new System.Windows.Forms.CheckBox();
             this.grpTelescopeSetup = new System.Windows.Forms.GroupBox();
             this.label14 = new System.Windows.Forms.Label();
             this.label13 = new System.Windows.Forms.Label();
@@ -110,9 +103,6 @@
             this.nudAperture = new System.Windows.Forms.NumericUpDown();
             this.nudCentralObstruction = new System.Windows.Forms.NumericUpDown();
             this.nudFocalLength = new System.Windows.Forms.NumericUpDown();
-            this.chkHighPrecisionGoto = new System.Windows.Forms.CheckBox();
-            this.chkTrackingOffOnConnect = new System.Windows.Forms.CheckBox();
-            this.chkWarnBeforeMeridianFlip = new System.Windows.Forms.CheckBox();
             this.btnOK = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
             this.grpMountSetup.SuspendLayout();
@@ -248,7 +238,7 @@
             this.grpParkSettings.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.grpParkSettings.Location = new System.Drawing.Point(12, 208);
             this.grpParkSettings.Name = "grpParkSettings";
-            this.grpParkSettings.Size = new System.Drawing.Size(211, 214);
+            this.grpParkSettings.Size = new System.Drawing.Size(211, 216);
             this.grpParkSettings.TabIndex = 1;
             this.grpParkSettings.TabStop = false;
             this.grpParkSettings.Text = "Park/Rate Settings";
@@ -443,7 +433,11 @@
             // nudLongitudeDeg
             // 
             this.nudLongitudeDeg.Location = new System.Drawing.Point(119, 50);
-            this.nudLongitudeDeg.Maximum = new decimal(new int[] { 180, 0, 0, 0 });
+            this.nudLongitudeDeg.Maximum = new decimal(new int[] {
+            180,
+            0,
+            0,
+            0});
             this.nudLongitudeDeg.Name = "nudLongitudeDeg";
             this.nudLongitudeDeg.Size = new System.Drawing.Size(47, 20);
             this.nudLongitudeDeg.TabIndex = 5;
@@ -485,8 +479,6 @@
             this.grpOrientation.Controls.Add(this.optOtaWest);
             this.grpOrientation.Controls.Add(this.optCounterweightDown);
             this.grpOrientation.Controls.Add(this.optCounterweightWest);
-            this.grpOrientation.Controls.Add(this.chkKeepLastSync);
-            this.grpOrientation.Controls.Add(this.chkAskAtStart);
             this.grpOrientation.Location = new System.Drawing.Point(229, 131);
             this.grpOrientation.Name = "grpOrientation";
             this.grpOrientation.Size = new System.Drawing.Size(285, 120);
@@ -527,22 +519,6 @@
             this.optCounterweightWest.TabIndex = 3;
             this.optCounterweightWest.Text = "Counterweight West";
             // 
-            // chkKeepLastSync
-            // 
-            this.chkKeepLastSync.Location = new System.Drawing.Point(172, 65);
-            this.chkKeepLastSync.Name = "chkKeepLastSync";
-            this.chkKeepLastSync.Size = new System.Drawing.Size(107, 20);
-            this.chkKeepLastSync.TabIndex = 4;
-            this.chkKeepLastSync.Text = "Keep Last Sync";
-            // 
-            // chkAskAtStart
-            // 
-            this.chkAskAtStart.Location = new System.Drawing.Point(172, 90);
-            this.chkAskAtStart.Name = "chkAskAtStart";
-            this.chkAskAtStart.Size = new System.Drawing.Size(88, 20);
-            this.chkAskAtStart.TabIndex = 5;
-            this.chkAskAtStart.Text = "Ask At Start";
-            // 
             // grpTelescopeSetup
             // 
             this.grpTelescopeSetup.Controls.Add(this.label14);
@@ -551,15 +527,13 @@
             this.grpTelescopeSetup.Controls.Add(this.nudAperture);
             this.grpTelescopeSetup.Controls.Add(this.nudCentralObstruction);
             this.grpTelescopeSetup.Controls.Add(this.nudFocalLength);
-            this.grpTelescopeSetup.Controls.Add(this.chkHighPrecisionGoto);
-            this.grpTelescopeSetup.Controls.Add(this.chkTrackingOffOnConnect);
-            this.grpTelescopeSetup.Controls.Add(this.chkWarnBeforeMeridianFlip);
             this.grpTelescopeSetup.Location = new System.Drawing.Point(229, 257);
             this.grpTelescopeSetup.Name = "grpTelescopeSetup";
-            this.grpTelescopeSetup.Size = new System.Drawing.Size(285, 200);
+            this.grpTelescopeSetup.Size = new System.Drawing.Size(285, 129);
             this.grpTelescopeSetup.TabIndex = 4;
             this.grpTelescopeSetup.TabStop = false;
             this.grpTelescopeSetup.Text = "Telescope Setup";
+            this.grpTelescopeSetup.Enter += new System.EventHandler(this.grpTelescopeSetup_Enter);
             // 
             // label14
             // 
@@ -591,7 +565,11 @@
             // nudAperture
             // 
             this.nudAperture.Location = new System.Drawing.Point(148, 30);
-            this.nudAperture.Maximum = new decimal(new int[] { 5000, 0, 0, 0 });
+            this.nudAperture.Maximum = new decimal(new int[] {
+            5000,
+            0,
+            0,
+            0});
             this.nudAperture.Name = "nudAperture";
             this.nudAperture.Size = new System.Drawing.Size(52, 20);
             this.nudAperture.TabIndex = 0;
@@ -606,38 +584,18 @@
             // nudFocalLength
             // 
             this.nudFocalLength.Location = new System.Drawing.Point(148, 95);
-            this.nudFocalLength.Maximum = new decimal(new int[] { 100000, 0, 0, 0 });
+            this.nudFocalLength.Maximum = new decimal(new int[] {
+            100000,
+            0,
+            0,
+            0});
             this.nudFocalLength.Name = "nudFocalLength";
             this.nudFocalLength.Size = new System.Drawing.Size(52, 20);
             this.nudFocalLength.TabIndex = 2;
             // 
-            // chkHighPrecisionGoto
-            // 
-            this.chkHighPrecisionGoto.Location = new System.Drawing.Point(23, 122);
-            this.chkHighPrecisionGoto.Name = "chkHighPrecisionGoto";
-            this.chkHighPrecisionGoto.Size = new System.Drawing.Size(180, 20);
-            this.chkHighPrecisionGoto.TabIndex = 3;
-            this.chkHighPrecisionGoto.Text = "Hi-Precision GOTO";
-            // 
-            // chkTrackingOffOnConnect
-            // 
-            this.chkTrackingOffOnConnect.Location = new System.Drawing.Point(23, 148);
-            this.chkTrackingOffOnConnect.Name = "chkTrackingOffOnConnect";
-            this.chkTrackingOffOnConnect.Size = new System.Drawing.Size(200, 20);
-            this.chkTrackingOffOnConnect.TabIndex = 4;
-            this.chkTrackingOffOnConnect.Text = "Tracking Off on Connection";
-            // 
-            // chkWarnBeforeMeridianFlip
-            // 
-            this.chkWarnBeforeMeridianFlip.Location = new System.Drawing.Point(23, 173);
-            this.chkWarnBeforeMeridianFlip.Name = "chkWarnBeforeMeridianFlip";
-            this.chkWarnBeforeMeridianFlip.Size = new System.Drawing.Size(200, 20);
-            this.chkWarnBeforeMeridianFlip.TabIndex = 5;
-            this.chkWarnBeforeMeridianFlip.Text = "Warn Before Meridian Flip";
-            // 
             // btnOK
             // 
-            this.btnOK.Location = new System.Drawing.Point(22, 430);
+            this.btnOK.Location = new System.Drawing.Point(268, 396);
             this.btnOK.Name = "btnOK";
             this.btnOK.Size = new System.Drawing.Size(75, 28);
             this.btnOK.TabIndex = 5;
@@ -647,7 +605,7 @@
             // btnCancel
             // 
             this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.btnCancel.Location = new System.Drawing.Point(123, 428);
+            this.btnCancel.Location = new System.Drawing.Point(401, 396);
             this.btnCancel.Name = "btnCancel";
             this.btnCancel.Size = new System.Drawing.Size(75, 28);
             this.btnCancel.TabIndex = 6;
@@ -660,7 +618,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.btnCancel;
-            this.ClientSize = new System.Drawing.Size(525, 470);
+            this.ClientSize = new System.Drawing.Size(525, 440);
             this.Controls.Add(this.grpMountSetup);
             this.Controls.Add(this.grpParkSettings);
             this.Controls.Add(this.grpSiteInfo);
@@ -674,6 +632,7 @@
             this.Name = "SetupDialogForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Temma Setup";
+            this.Load += new System.EventHandler(this.SetupDialogForm_Load_1);
             this.grpMountSetup.ResumeLayout(false);
             this.grpMountSetup.PerformLayout();
             this.grpParkSettings.ResumeLayout(false);
