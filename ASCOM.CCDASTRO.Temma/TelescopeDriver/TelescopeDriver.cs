@@ -192,7 +192,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         public void CommandBlind(string command, bool raw)
         {
-            SendCommand(command, raw);
+            SendBlindTemmaCommand(command, raw);
         }
 
         public bool CommandBool(string command, bool raw)
@@ -273,8 +273,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 CheckConnected("Tracking");
                 if (tracking == value) return;
 
-                SendCommand(TemmaProtocol.BuildTrackingCommand(value));
-                tracking = value;
+                SetTrackingStateOrThrow(value);
             }
         }
 
@@ -330,8 +329,17 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CheckConnected("AbortSlew");
             CancelSlewStartVerification();
             SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
+            Thread.Sleep(250);
+
+            // PS is blind. Confirm that the controller accepted it: S0 means
+            // the GOTO was cancelled, while S1 means it is still in progress.
+            string abortStatus = (SendCommand("S") ?? string.Empty).Trim();
+            if (!string.Equals(abortStatus, "S0", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Temma abort was not confirmed; expected S0, received " +
+                    EscapeForLog(abortStatus));
+
             isSlewing = false;
-            Thread.Sleep(500);
         }
 
         public void SlewToCoordinates(double rightAscension, double declination)
@@ -587,10 +595,14 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 connectionInitializing = false;
             }
 
-            // A persisted parked mount was explicitly stopped by Park(). Keep
-            // the software state stopped so Unpark can restore tracking with
-            // STN-OFF when it was enabled before parking.
-            tracking = isParked ? false : !settings.TrackingOffOnConnect;
+            // Temma reports standby state with STN-COD. Preserve the mount's
+            // existing tracking state on a normal connection; only change it
+            // when the explicit "tracking off on connect" option is enabled.
+            if (settings.TrackingOffOnConnect)
+                SetTrackingStateOrThrow(false);
+            else
+                tracking = QueryTrackingStateOrThrow();
+
             isSlewing = false;
             lastCoordinateUpdate = DateTime.MinValue;
 
@@ -974,16 +986,44 @@ namespace ASCOM.CCDASTROTemma.Telescope
             return string.Format("{0}{1:00}{2:00}{3:0}", sign, degrees, minutes, tenths);
         }
 
-        private void SendBlindTemmaCommand(string command)
+        private void SendBlindTemmaCommand(string command, bool raw = false)
         {
             CheckConnected("SendBlindTemmaCommand");
 
-            string framedCommand = command.EndsWith("\r\n")
+            string framedCommand = raw || command.EndsWith("\r\n")
                 ? command
                 : command + "\r\n";
 
             LogMessage("Blind TX", EscapeForLog(framedCommand));
             serial.Transmit(framedCommand);
+        }
+
+        private bool QueryTrackingStateOrThrow()
+        {
+            string response = (SendCommand("STN-COD") ?? string.Empty).Trim();
+
+            if (string.Equals(response, "stn-off", StringComparison.OrdinalIgnoreCase))
+                return true; // Standby OFF: RA motor is tracking.
+
+            if (string.Equals(response, "stn-on", StringComparison.OrdinalIgnoreCase))
+                return false; // Standby ON: RA motor is stopped.
+
+            throw new InvalidOperationException(
+                "Temma returned an invalid standby status: " + EscapeForLog(response));
+        }
+
+        private void SetTrackingStateOrThrow(bool enableTracking)
+        {
+            string expectedReply = enableTracking ? "stn-off" : "stn-on";
+            string response = (SendCommand(
+                TemmaProtocol.BuildTrackingCommand(enableTracking)) ?? string.Empty).Trim();
+
+            if (!string.Equals(response, expectedReply, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Temma did not confirm the requested tracking state; expected " +
+                    expectedReply + ", received " + EscapeForLog(response));
+
+            tracking = enableTracking;
         }
 
         private static string FormatTemmaSiderealTime(double siderealHours)
