@@ -679,21 +679,50 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private void SendTemmaGotoOrThrow(double rightAscension, double declination)
         {
             string lst = FormatTemmaSiderealTime(SiderealTime);
-            serial.ClearBuffers();
-            SendBlindTemmaCommand("T" + lst);
-            Thread.Sleep(100);
+            string slewCommand = TemmaProtocol.BuildSlewCommand(rightAscension, declination);
 
-            string response = SendCommand(TemmaProtocol.BuildSlewCommand(rightAscension, declination));
-            string status = (response ?? string.Empty).Trim();
-            switch (status)
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                case "R0": return;
-                case "R1": throw new InvalidOperationException("Temma GOTO failed: RA format/error (R1).");
-                case "R2": throw new InvalidOperationException("Temma GOTO failed: Declination format/error (R2).");
-                case "R3": throw new InvalidOperationException("Temma GOTO failed: Too many digits (R3).");
-                case "R4": throw new InvalidOperationException("Temma GOTO failed: Target is below the horizon (R4).");
-                case "R5": throw new InvalidOperationException("Temma GOTO failed: Mount is on standby (R5).");
-                default: throw new InvalidOperationException("Temma GOTO returned an unexpected response: " + EscapeForLog(response));
+                serial.ClearBuffers();
+
+                SendBlindTemmaCommand("T" + lst);
+                Thread.Sleep(100);
+
+                string response = SendCommand(slewCommand);
+                string status = (response ?? string.Empty).Trim();
+
+                if (status == "R0")
+                    return;
+
+                // The original VB6 driver always retried the slew once before failing.
+                if (attempt == 0)
+                {
+                    Thread.Sleep(100);
+                    continue;
+                }
+
+                switch (status)
+                {
+                    case "R1":
+                        throw new InvalidOperationException("Temma GOTO failed: RA format/error (R1).");
+
+                    case "R2":
+                        throw new InvalidOperationException("Temma GOTO failed: Declination format/error (R2).");
+
+                    case "R3":
+                        throw new InvalidOperationException("Temma GOTO failed: Too many digits (R3).");
+
+                    case "R4":
+                        throw new InvalidOperationException("Temma GOTO failed: Target is below the horizon (R4).");
+
+                    case "R5":
+                        throw new InvalidOperationException("Temma GOTO failed: Mount is on standby (R5).");
+
+                    default:
+                        throw new InvalidOperationException(
+                            "Temma GOTO returned an unexpected response: " +
+                            EscapeForLog(response));
+                }
             }
         }
 
