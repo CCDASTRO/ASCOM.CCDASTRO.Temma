@@ -425,14 +425,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
             TargetRightAscension = rightAscension;
             TargetDeclination = declination;
 
-            // Mirror the requested sync immediately in driver state; the next
-            // coordinate poll will verify what the real mount reports.
-            currentRightAscension = rightAscension;
-            currentDeclination = declination;
+
 
             LogMessage("Sync", string.Format(
-                "VB6-compatible T/T/D sync sequence completed. RA={0:F6} h, Dec={1:F6} deg",
-                rightAscension, declination));
+               "Sync command sent. Target RA={0:F6} h, Dec={1:F6} deg",
+               rightAscension, declination));
         }
 
         public void SyncToTarget()
