@@ -763,84 +763,74 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             serial.ClearBuffers();
 
-            // Always initialize the Temma with the current LST and latitude.
+            // Always initialize LST and latitude.
             SendBlindTemmaCommand("T" + lst);
-            Thread.Sleep(200);
+            Thread.Sleep(100);
 
             SendBlindTemmaCommand("I" + latitude);
-            Thread.Sleep(200);
+            Thread.Sleep(100);
 
-            if (orientation == "OtaEast" || orientation == "OtaWest")
+            switch (orientation)
             {
-                string e = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
-                string trimmed = (e ?? string.Empty).Trim();
+                case "OtaEast":
+                case "OtaWest":
+                    {
+                        string e = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
+                        string trimmed = (e ?? string.Empty).Trim();
 
-                bool eastState = trimmed.Length > 13 && trimmed[13] == 'E';
-                bool wantEastState = (orientation == "OtaEast");
+                        bool eastState = trimmed.Length > 13 && trimmed[13] == 'E';
+                        bool wantEastState = (orientation == "OtaEast");
 
-                if (eastState != wantEastState)
-                {
-                    SendBlindTemmaCommand("PT");
-                    Thread.Sleep(200);
-                }
+                        if (eastState != wantEastState)
+                        {
+                            SendBlindTemmaCommand("PT");
+                            Thread.Sleep(100);
+                        }
 
-                SendBlindTemmaCommand("T" + lst);
-                Thread.Sleep(200);
+                        // Establish Temma reference exactly as VB6.
+                        SendBlindTemmaCommand("T" + lst);
+                        Thread.Sleep(100);
 
-                SendBlindTemmaCommand("Z");
-                Thread.Sleep(200);
+                        SendBlindTemmaCommand("Z");
+                        Thread.Sleep(100);
 
-                SendBlindTemmaCommand("D" + lst + latitude);
-                Thread.Sleep(200);
-            }
-            else if (orientation == "CounterweightDown")
-            {
-                EnsureTemmaPierReference();
+                        SendBlindTemmaCommand("D" + lst + latitude);
 
-                SendBlindTemmaCommand("T" + lst);
-                Thread.Sleep(200);
+                        serial.ClearBuffers();
+                        Thread.Sleep(100);
+                        break;
+                    }
 
-                SendBlindTemmaCommand("Z");
-                Thread.Sleep(200);
+                case "CounterweightDown":
+                    {
+                        EnsureTemmaPierReference();
 
-                SendBlindTemmaCommand("T" + lst);
-                Thread.Sleep(200);
+                        double ra = NormalizeHours(SiderealTime - 6.0);
+                        double dec = SiteLatitude >= 0.0
+                            ? Math.Min(89.999, SiteLatitude + 0.01)
+                            : Math.Max(-89.999, SiteLatitude - 0.01);
 
-                double initialRa = NormalizeHours(SiderealTime - 6.0);
-                double initialDec = (SiteLatitude >= 0.0)
-                    ? Math.Min(89.999, SiteLatitude + 0.01)
-                    : Math.Max(-89.999, SiteLatitude - 0.01);
+                        SyncToCoordinates(ra, dec);
+                        break;
+                    }
 
-                SyncToCoordinates(initialRa, initialDec);
-            }
-            else if (orientation == "CounterweightWest")
-            {
-                EnsureTemmaPierReference();
+                case "CounterweightWest":
+                    {
+                        EnsureTemmaPierReference();
 
-                SendBlindTemmaCommand("T" + lst);
-                Thread.Sleep(200);
+                        double ra = NormalizeHours(SiderealTime);
+                        double dec = SiteLatitude >= 0.0
+                            ? Math.Min(89.999, SiteLatitude + 0.01)
+                            : Math.Max(-89.999, SiteLatitude - 0.01);
 
-                SendBlindTemmaCommand("Z");
-                Thread.Sleep(200);
-
-                SendBlindTemmaCommand("T" + lst);
-                Thread.Sleep(200);
-
-                double initialRa = NormalizeHours(SiderealTime);
-                double initialDec = (SiteLatitude >= 0.0)
-                    ? Math.Min(89.999, SiteLatitude + 0.01)
-                    : Math.Max(-89.999, SiteLatitude - 0.01);
-
-                SyncToCoordinates(initialRa, initialDec);
+                        SyncToCoordinates(ra, dec);
+                        break;
+                    }
             }
 
-            // Allow the controller to complete the initialization sequence.
-            Thread.Sleep(250);
-
-            // Discard any pending responses from the initialization commands.
             serial.ClearBuffers();
 
-            LogMessage("InitialSync", "Startup synchronization sequence completed.");
+            LogMessage("InitialSync", "Startup synchronization completed.");
         }
         private void EnsureTemmaPierReference()
         {
