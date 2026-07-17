@@ -44,6 +44,20 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private const double SlewStartRaMovementThresholdHours = 0.0002;
         private const double SlewStartDecMovementThresholdDegrees = 0.002;
 
+        // Temma does not provide a reliable, universal end-of-GOTO response.
+        // Match the proven VB6 driver's approach: after movement has been
+        // confirmed, completion is based on the mount settling rather than on
+        // an unrealistically exact match to the requested coordinates.
+        private readonly object slewCompletionLock = new object();
+        private const double SlewCompletionRaMotionThresholdHours = 0.001;
+        private const double SlewCompletionDecMotionThresholdDegrees = 0.001;
+        private const int SlewCompletionSettleDelayMs = 2000;
+        private bool slewStartConfirmed;
+        private bool slewCompletionSampleValid;
+        private double slewCompletionPreviousRa;
+        private double slewCompletionPreviousDec;
+        private DateTime slewCompletionSettledSinceUtc = DateTime.MinValue;
+
         private TraceLogger tl;
         private Serial serial;
         private DriverSettings settings;
@@ -283,14 +297,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             {
                 if (isSlewing)
                 {
-                    UpdateCoordinates();
-
-                    double raError = Math.Abs(currentRightAscension - TargetRightAscension);
-                    if (raError > 12.0) raError = 24.0 - raError;
-                    double decError = Math.Abs(currentDeclination - TargetDeclination);
-
-                    if (raError < (1.0 / 3600.0) && decError < (10.0 / 3600.0))
-                        isSlewing = false;
+                    if (UpdateCoordinates())
+                        UpdateSlewCompletionState();
                 }
 
                 return isSlewing;
@@ -330,6 +338,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CancelSlewStartVerification();
             SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
             isSlewing = false;
+            ResetSlewCompletionTracking();
 
             // PS is the only reliable abort command across the tested Temma
             // controllers. Some firmwares do not reply to the documented S
@@ -365,6 +374,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             CancelSlewStartVerification();
             SendTemmaGotoOrThrow(rightAscension, declination);
+            ResetSlewCompletionTracking();
             isSlewing = true;
 
             int generation;
@@ -591,6 +601,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 tracking = QueryTrackingStateOrThrow();
 
             isSlewing = false;
+            ResetSlewCompletionTracking();
             lastCoordinateUpdate = DateTime.MinValue;
 
             if (isParked && settings.UnparkOnReconnect)
@@ -606,6 +617,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             tracking = false;
             isSlewing = false;
+            ResetSlewCompletionTracking();
             pulseGuiding = false;
 
             LogMessage("Disconnect", "Disconnected");
@@ -643,10 +655,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
             return value.Replace("\r", "<CR>").Replace("\n", "<LF>");
         }
 
-        private void UpdateCoordinates()
+        private bool UpdateCoordinates()
         {
-            if (!connectedState) return;
-            if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0) return;
+            if (!connectedState) return false;
+            if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0) return false;
 
             try
             {
@@ -660,12 +672,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     currentRightAscension = ra;
                     currentDeclination = dec;
                     lastCoordinateUpdate = DateTime.UtcNow;
+                    return true;
                 }
             }
             catch (Exception ex)
             {
                 LogMessage("UpdateCoordinates", ex.Message);
             }
+
+            return false;
         }
 
         #endregion
@@ -675,6 +690,77 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private void CancelSlewStartVerification()
         {
             lock (slewVerificationLock) slewVerificationGeneration++;
+        }
+
+        private void ResetSlewCompletionTracking()
+        {
+            lock (slewCompletionLock)
+            {
+                slewStartConfirmed = false;
+                slewCompletionSampleValid = false;
+                slewCompletionSettledSinceUtc = DateTime.MinValue;
+            }
+        }
+
+        private void ConfirmSlewStarted()
+        {
+            lock (slewCompletionLock)
+            {
+                slewStartConfirmed = true;
+                slewCompletionSampleValid = false;
+                slewCompletionSettledSinceUtc = DateTime.MinValue;
+            }
+        }
+
+        private void UpdateSlewCompletionState()
+        {
+            bool slewCompleted = false;
+
+            lock (slewCompletionLock)
+            {
+                // Never declare completion before the independent start
+                // verification has observed real mount movement.
+                if (!slewStartConfirmed) return;
+
+                DateTime now = DateTime.UtcNow;
+                if (!slewCompletionSampleValid)
+                {
+                    slewCompletionPreviousRa = currentRightAscension;
+                    slewCompletionPreviousDec = currentDeclination;
+                    slewCompletionSampleValid = true;
+                    return;
+                }
+
+                double raMovement = Math.Abs(currentRightAscension - slewCompletionPreviousRa);
+                if (raMovement > 12.0) raMovement = 24.0 - raMovement;
+                double decMovement = Math.Abs(currentDeclination - slewCompletionPreviousDec);
+
+                slewCompletionPreviousRa = currentRightAscension;
+                slewCompletionPreviousDec = currentDeclination;
+
+                if (raMovement > SlewCompletionRaMotionThresholdHours ||
+                    decMovement > SlewCompletionDecMotionThresholdDegrees)
+                {
+                    slewCompletionSettledSinceUtc = DateTime.MinValue;
+                    return;
+                }
+
+                if (slewCompletionSettledSinceUtc == DateTime.MinValue)
+                {
+                    slewCompletionSettledSinceUtc = now;
+                    return;
+                }
+
+                if ((now - slewCompletionSettledSinceUtc).TotalMilliseconds >= SlewCompletionSettleDelayMs)
+                    slewCompleted = true;
+            }
+
+            if (slewCompleted)
+            {
+                isSlewing = false;
+                LogMessage("SlewComplete", "Mount movement settled; marking slew complete.");
+                ResetSlewCompletionTracking();
+            }
         }
 
         private bool IsSlewVerificationCurrent(int generation)
@@ -753,6 +839,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                         LogMessage("SlewVerify", string.Format(
                             "Mount movement confirmed on attempt {0}. RA moved {1:F6} h, Dec moved {2:F6} deg.",
                             attempt, raMoved, decMoved));
+                        ConfirmSlewStarted();
                         return;
                     }
 
@@ -771,12 +858,14 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 LogMessage("SlewVerify", "Mount failed to begin moving after 5 accepted GOTO attempts. Sending PS.");
                 SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
                 isSlewing = false;
+                ResetSlewCompletionTracking();
             }
             catch (Exception ex)
             {
                 if (IsSlewVerificationCurrent(generation))
                 {
                     isSlewing = false;
+                    ResetSlewCompletionTracking();
                     LogMessage("SlewVerify", "Slew-start verification failed: " + ex);
                     try { SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand()); }
                     catch (Exception abortEx) { LogMessage("SlewVerify", "Abort also failed: " + abortEx.Message); }
