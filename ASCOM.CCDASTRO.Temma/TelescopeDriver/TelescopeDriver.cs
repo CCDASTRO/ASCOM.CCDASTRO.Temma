@@ -429,6 +429,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
             SendTemmaSyncOrThrow(syncCommand, "coordinate sync");
             System.Threading.Thread.Sleep(100);
 
+            // The Temma accepted the new reference. Keep ASCOM clients from
+            // seeing the previous E-query coordinates until their next poll.
+            currentRightAscension = rightAscension;
+            currentDeclination = declination;
+            lastCoordinateUpdate = DateTime.UtcNow;
             TargetRightAscension = rightAscension;
             TargetDeclination = declination;
 
@@ -568,7 +573,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 if (!isParked)
                     ApplyInitialMountSynchronization();
                 else
+                {
+                    RestoreParkedCoordinateCache();
                     LogMessage("Connect", "Mount is parked; startup synchronization deferred until Unpark.");
+                }
 
                 ConfigureMountSpeed();
                 ConfigureAxisRates();
@@ -602,7 +610,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             isSlewing = false;
             ResetSlewCompletionTracking();
-            lastCoordinateUpdate = DateTime.MinValue;
+            if (!isParked)
+                lastCoordinateUpdate = DateTime.MinValue;
 
             if (isParked && settings.UnparkOnReconnect)
                 Unpark();
@@ -658,6 +667,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private bool UpdateCoordinates()
         {
             if (!connectedState) return false;
+            // Park is an ASCOM driver-side state for Temma. While parked,
+            // expose the stored physical park position rather than an
+            // arbitrary raw E response after a mount power cycle.
+            if (isParked) return false;
             if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0) return false;
 
             try
@@ -993,6 +1006,20 @@ namespace ASCOM.CCDASTROTemma.Telescope
             HorizontalToEquatorial(0.01, referenceAltitude,
                                    out ignoredRightAscension, out declination);
             rightAscension = NormalizeHours(SiderealTime);
+        }
+
+        private void RestoreParkedCoordinateCache()
+        {
+            HorizontalToEquatorial(settings.ParkAzimuth, settings.ParkAltitude,
+                                   out currentRightAscension, out currentDeclination);
+            TargetRightAscension = currentRightAscension;
+            TargetDeclination = currentDeclination;
+            lastCoordinateUpdate = DateTime.UtcNow;
+
+            LogMessage("Connect", string.Format(
+                "Restored parked position: Az={0:F4}, Alt={1:F4}, RA={2:F6}, Dec={3:F6}.",
+                settings.ParkAzimuth, settings.ParkAltitude,
+                currentRightAscension, currentDeclination));
         }
 
         private void EnsureTemmaPierReference()
