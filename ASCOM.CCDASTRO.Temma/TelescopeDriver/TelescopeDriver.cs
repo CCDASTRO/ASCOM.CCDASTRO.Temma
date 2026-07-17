@@ -926,10 +926,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     {
                         EnsureTemmaPierReference();
 
-                        double ra = NormalizeHours(SiderealTime - 6.0);
-                        double dec = SiteLatitude >= 0.0
-                            ? Math.Min(89.999, SiteLatitude + 0.01)
-                            : Math.Max(-89.999, SiteLatitude - 0.01);
+                        double ra;
+                        double dec;
+                        GetCounterweightDownReference(out ra, out dec);
 
                         SyncToCoordinates(ra, dec);
                         break;
@@ -939,10 +938,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     {
                         EnsureTemmaPierReference();
 
-                        double ra = NormalizeHours(SiderealTime);
-                        double dec = SiteLatitude >= 0.0
-                            ? Math.Min(89.999, SiteLatitude + 0.01)
-                            : Math.Max(-89.999, SiteLatitude - 0.01);
+                        double ra;
+                        double dec;
+                        GetCounterweightWestReference(out ra, out dec);
 
                         SyncToCoordinates(ra, dec);
                         break;
@@ -953,6 +951,50 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             LogMessage("InitialSync", "Startup synchronization completed.");
         }
+
+        // The old driver calculated the counterweight reference positions from
+        // physical Alt/Az, then synchronized Temma to the resulting sky
+        // declination. Do not substitute SiteLatitude for declination: at the
+        // northern counterweight-down reference the OTA points near the NCP,
+        // so declination is near +90 degrees, not the site latitude.
+        private void GetCounterweightDownReference(out double rightAscension, out double declination)
+        {
+            double referenceAltitude;
+            double referenceAzimuth;
+
+            if (SiteLatitude < 0.0)
+            {
+                // Match VB6 Init Down: just south of the south celestial pole.
+                referenceAltitude = Math.Abs(SiteLatitude - 0.01);
+                referenceAzimuth = 179.09;
+            }
+            else
+            {
+                // Just east of true north avoids the pole's undefined azimuth.
+                referenceAltitude = SiteLatitude + 0.01;
+                referenceAzimuth = 0.01;
+            }
+
+            double ignoredRightAscension;
+            HorizontalToEquatorial(referenceAzimuth, referenceAltitude,
+                                   out ignoredRightAscension, out declination);
+            rightAscension = NormalizeHours(SiderealTime - 6.0);
+        }
+
+        private void GetCounterweightWestReference(out double rightAscension, out double declination)
+        {
+            // This intentionally follows the old VB6 Init CW West geometry,
+            // including its southern-hemisphere reference altitude.
+            double referenceAltitude = SiteLatitude < 0.0
+                ? SiteLatitude - 0.01
+                : SiteLatitude + 0.01;
+
+            double ignoredRightAscension;
+            HorizontalToEquatorial(0.01, referenceAltitude,
+                                   out ignoredRightAscension, out declination);
+            rightAscension = NormalizeHours(SiderealTime);
+        }
+
         private void EnsureTemmaPierReference()
         {
             string e = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
