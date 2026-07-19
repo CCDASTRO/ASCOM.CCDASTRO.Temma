@@ -2,7 +2,7 @@
 
 An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The driver is a C# local COM server that retains the native Temma serial protocol while replacing the original VB6/ActiveX implementation.
 
-Current version: **1.0.20**
+Current version: **1.0.21**
 
 ## What it supports
 
@@ -41,6 +41,10 @@ The Temma serial connection is configured as:
 | DTR | Enabled |
 
 Select the COM port and mount configuration in the driver's ASCOM Setup dialog before connecting.
+
+All clients served by the local COM server share one physical serial connection. The first
+client opens and initializes the mount; later clients reuse that connection. The port is
+closed only after the last connected client disconnects.
 
 ## Startup reference
 
@@ -119,7 +123,7 @@ Slew completion is determined from observed settled mount motion rather than req
 
 ## Validation status
 
-Version 1.0.20 has been exercised with a real Temma mount for connection, OTA-East initialization, sync, repeated GOTO slews, slew completion, and abort behavior. Counterweight-reference and park/unpark/reconnect behavior have also been verified with the companion Temma simulator.
+Version 1.0.21 adds reference-counted, serialized sharing of one physical Temma connection across multiple ASCOM clients. Version 1.0.20 was exercised with a real Temma mount for connection, OTA-East initialization, sync, repeated GOTO slews, slew completion, and abort behavior. Counterweight-reference and park/unpark/reconnect behavior were also verified with the companion Temma simulator.
 
 ## Author
 

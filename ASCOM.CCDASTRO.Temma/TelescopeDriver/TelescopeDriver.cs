@@ -59,7 +59,6 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private DateTime slewCompletionSettledSinceUtc = DateTime.MinValue;
 
         private TraceLogger tl;
-        private Serial serial;
         private DriverSettings settings;
 
         private const double SIDEREAL_RATE_DEG_SEC = 360.0 / 86164.0905;
@@ -110,8 +109,6 @@ namespace ASCOM.CCDASTROTemma.Telescope
             tl = new TraceLogger("", "Temma.Driver");
             tl.Enabled = settings.TraceEnabled;
 
-            serial = new Serial();
-
             tracking = true;
             TargetRightAscension = 0.0;
             TargetDeclination = 0.0;
@@ -137,19 +134,16 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             if (disposing)
             {
-                if (serial != null)
+                if (connectedState)
                 {
                     try
                     {
-                        if (serial.Connected)
-                            serial.Connected = false;
+                        SharedResources.ReleaseConnection();
                     }
                     catch
                     {
                     }
-
-                    serial.Dispose();
-                    serial = null;
+                    connectedState = false;
                 }
 
                 if (tl != null)
@@ -414,7 +408,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             // then send D. Real Temma controllers acknowledge D with R0.
             string lst = FormatTemmaSiderealTime(SiderealTime);
 
-            serial.ClearBuffers();
+            SharedResources.WithSerial(port => port.ClearBuffers());
 
             SendBlindTemmaCommand("T" + lst);
             System.Threading.Thread.Sleep(100);
@@ -530,13 +524,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             // Match the proven VB6 Temma serial configuration exactly:
             // 19200 baud, EVEN parity, 8 data bits, 1 stop bit, DTR enabled,
             // 5 second receive timeout. Temma commands and replies are CRLF terminated.
-            serial.PortName = settings.ComPort;
-            serial.Speed = SerialSpeed.ps19200;
-            serial.Parity = SerialParity.Even;
-            serial.DTREnable = true;
-            serial.ReceiveTimeout = 5;
-
             connectionInitializing = true;
+            bool acquired = false;
 
             try
             {
@@ -544,42 +533,57 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     "Opening {0}: 19200,E,8,1; DTR=True; ReceiveTimeout=5s",
                     settings.ComPort));
 
-                serial.Connected = true;
-                serial.ClearBuffers();
-
-                // VB6 authoritative behavior:
-                //   ocom.Transmit "E" & vbCrLf
-                //   buf = ocom.ReceiveTerminated(vbCrLf)
-                string command = TemmaProtocol.BuildCoordinateQueryCommand() + "\r\n";
-                LogMessage("TX", EscapeForLog(command));
-                serial.Transmit(command);
-
-                string response = serial.ReceiveTerminated("\r\n");
-                LogMessage("RX", EscapeForLog(response));
-
-                double ra;
-                double dec;
-
-                if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
-                    throw new Exception("Temma returned a response that could not be parsed: " +
-                                        EscapeForLog(response));
-
-                currentRightAscension = ra;
-                currentDeclination = dec;
-
-                // A parked mount's physical position is restored by Unpark()
-                // from its saved Alt/Az reference. Do not overwrite that
-                // reference with normal power-on synchronization.
-                if (!isParked)
-                    ApplyInitialMountSynchronization();
-                else
+                bool openedPhysicalPort = SharedResources.AcquireConnection(settings.ComPort, port =>
                 {
-                    RestoreParkedCoordinateCache();
-                    LogMessage("Connect", "Mount is parked; startup synchronization deferred until Unpark.");
-                }
+                    port.PortName = settings.ComPort;
+                    port.Speed = SerialSpeed.ps19200;
+                    port.Parity = SerialParity.Even;
+                    port.DTREnable = true;
+                    port.ReceiveTimeout = 5;
+                    port.Connected = true;
+                    port.ClearBuffers();
 
-                ConfigureMountSpeed();
-                ConfigureAxisRates();
+                    string command = TemmaProtocol.BuildCoordinateQueryCommand() + "\r\n";
+                    LogMessage("TX", EscapeForLog(command));
+                    port.Transmit(command);
+                    string response = port.ReceiveTerminated("\r\n");
+                    LogMessage("RX", EscapeForLog(response));
+
+                    double ra;
+                    double dec;
+                    if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
+                        throw new Exception("Temma returned a response that could not be parsed: " +
+                                            EscapeForLog(response));
+
+                    currentRightAscension = ra;
+                    currentDeclination = dec;
+
+                    if (!isParked)
+                        ApplyInitialMountSynchronization();
+                    else
+                    {
+                        RestoreParkedCoordinateCache();
+                        LogMessage("Connect", "Mount is parked; startup synchronization deferred until Unpark.");
+                    }
+
+                    ConfigureMountSpeed();
+                    ConfigureAxisRates();
+                });
+                acquired = true;
+
+                if (!openedPhysicalPort)
+                {
+                    LogMessage("Connect", "Reusing the shared Temma serial connection.");
+                    string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
+                    double ra;
+                    double dec;
+                    if (!TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
+                        throw new Exception("Temma returned a response that could not be parsed: " +
+                                            EscapeForLog(response));
+                    currentRightAscension = ra;
+                    currentDeclination = dec;
+                    ConfigureAxisRates();
+                }
 
                 connectedState = true;
                 LogMessage("Connect", "Temma initialization completed successfully.");
@@ -589,8 +593,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 connectedState = false;
                 LogMessage("Connect ERROR", ex.ToString());
 
-                if (serial != null && serial.Connected)
-                    serial.Connected = false;
+                if (acquired)
+                    SharedResources.ReleaseConnection();
 
                 throw new NotConnectedException(
                     "Unable to communicate with the Temma mount. " + ex.Message);
@@ -600,29 +604,40 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 connectionInitializing = false;
             }
 
-            // Temma reports standby state with STN-COD. Preserve the mount's
-            // existing tracking state on a normal connection; only change it
-            // when the explicit "tracking off on connect" option is enabled.
-            if (settings.TrackingOffOnConnect)
-                SetTrackingStateOrThrow(false);
-            else
-                tracking = QueryTrackingStateOrThrow();
+            try
+            {
+                // Temma reports standby state with STN-COD. Preserve the mount's
+                // existing tracking state on a normal connection; only change it
+                // when the explicit "tracking off on connect" option is enabled.
+                if (settings.TrackingOffOnConnect)
+                    SetTrackingStateOrThrow(false);
+                else
+                    tracking = QueryTrackingStateOrThrow();
 
-            isSlewing = false;
-            ResetSlewCompletionTracking();
-            if (!isParked)
-                lastCoordinateUpdate = DateTime.MinValue;
+                isSlewing = false;
+                ResetSlewCompletionTracking();
+                if (!isParked)
+                    lastCoordinateUpdate = DateTime.MinValue;
 
-            if (isParked && settings.UnparkOnReconnect)
-                Unpark();
+                if (isParked && settings.UnparkOnReconnect)
+                    Unpark();
 
-            LogMessage("Connect", "Successfully connected to Temma mount.");
+                LogMessage("Connect", "Successfully connected to Temma mount.");
+            }
+            catch (Exception ex)
+            {
+                connectedState = false;
+                if (acquired)
+                    SharedResources.ReleaseConnection();
+                LogMessage("Connect ERROR", ex.ToString());
+                throw new NotConnectedException(
+                    "Unable to finish initializing the Temma mount. " + ex.Message);
+            }
         }
 
         private void DisconnectFromMount()
         {
-            if (serial != null && serial.Connected)
-                serial.Connected = false;
+            SharedResources.ReleaseConnection();
 
             tracking = false;
             isSlewing = false;
@@ -648,9 +663,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
             if (logTransaction)
                 LogMessage("TX", EscapeForLog(framedCommand));
 
-            serial.Transmit(framedCommand);
-
-            string response = serial.ReceiveTerminated("\r\n");
+            string response = SharedResources.WithSerial(port =>
+            {
+                port.Transmit(framedCommand);
+                return port.ReceiveTerminated("\r\n");
+            });
 
             if (logTransaction)
                 LogMessage("RX", EscapeForLog(response));
@@ -788,7 +805,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             for (int attempt = 0; attempt < 2; attempt++)
             {
-                serial.ClearBuffers();
+                SharedResources.WithSerial(port => port.ClearBuffers());
 
                 SendBlindTemmaCommand("T" + lst);
                 Thread.Sleep(100);
@@ -894,7 +911,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             LogMessage("InitialSync", "Applying startup orientation: " + orientation);
 
-            serial.ClearBuffers();
+            SharedResources.WithSerial(port => port.ClearBuffers());
 
             // Always initialize LST and latitude.
             SendBlindTemmaCommand("T" + lst);
@@ -960,7 +977,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     }
             }
 
-            serial.ClearBuffers();
+            SharedResources.WithSerial(port => port.ClearBuffers());
 
             LogMessage("InitialSync", "Startup synchronization completed.");
         }
@@ -1141,7 +1158,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 : command + "\r\n";
 
             LogMessage("Blind TX", EscapeForLog(framedCommand));
-            serial.Transmit(framedCommand);
+            SharedResources.WithSerial(port => port.Transmit(framedCommand));
         }
 
         private void SendTemmaSyncOrThrow(string syncCommand, string operation)
