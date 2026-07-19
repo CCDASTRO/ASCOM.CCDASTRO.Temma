@@ -62,6 +62,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private DriverSettings settings;
 
         private const double SIDEREAL_RATE_DEG_SEC = 360.0 / 86164.0905;
+        private const double TEMMA_GUIDE_RATE_DEG_SEC = SIDEREAL_RATE_DEG_SEC * 0.5;
         private AxisRates axisRates;
 
         private double currentRightAscension;
@@ -1279,7 +1280,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public bool CanPark { get { return true; } }
         public bool CanPulseGuide { get { return true; } }
         public bool CanSetDeclinationRate { get { return false; } }
-        public bool CanSetGuideRates { get { return true; } }
+        public bool CanSetGuideRates { get { return false; } }
         public bool CanSetPark { get { return true; } }
         public bool CanSetPierSide { get { return false; } }
         public bool CanSetRightAscensionRate { get { return false; } }
@@ -1297,8 +1298,31 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public EquatorialCoordinateType EquatorialSystem { get { return EquatorialCoordinateType.equTopocentric; } }
         public void FindHome() { }
         public double FocalLength { get { return settings.FocalLength; } }
-        public double GuideRateDeclination { get { return settings.GuideRateDec; } set { settings.GuideRateDec = value; } }
-        public double GuideRateRightAscension { get { return settings.GuideRateRA; } set { settings.GuideRateRA = value; } }
+        public double GuideRateDeclination
+        {
+            get
+            {
+                CheckConnected("GuideRateDeclination");
+                return TEMMA_GUIDE_RATE_DEG_SEC;
+            }
+            set
+            {
+                throw new PropertyNotImplementedException("GuideRateDeclination", true);
+            }
+        }
+
+        public double GuideRateRightAscension
+        {
+            get
+            {
+                CheckConnected("GuideRateRightAscension");
+                return TEMMA_GUIDE_RATE_DEG_SEC;
+            }
+            set
+            {
+                throw new PropertyNotImplementedException("GuideRateRightAscension", true);
+            }
+        }
         public bool IsPulseGuiding { get { return pulseGuiding; } }
         public void MoveAxis(TelescopeAxes axis, double rate)
         {

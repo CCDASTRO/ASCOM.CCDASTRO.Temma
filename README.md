@@ -2,7 +2,7 @@
 
 An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The driver is a C# local COM server that retains the native Temma serial protocol while replacing the original VB6/ActiveX implementation.
 
-Current version: **1.0.21**
+Current version: **1.0.22**
 
 ## What it supports
 
@@ -123,7 +123,7 @@ Slew completion is determined from observed settled mount motion rather than req
 
 ## Validation status
 
-Version 1.0.21 adds reference-counted, serialized sharing of one physical Temma connection across multiple ASCOM clients. Version 1.0.20 was exercised with a real Temma mount for connection, OTA-East initialization, sync, repeated GOTO slews, slew completion, and abort behavior. Counterweight-reference and park/unpark/reconnect behavior were also verified with the companion Temma simulator.
+Version 1.0.22 reports the Temma's fixed 0.5x sidereal guide speed in the ASCOM-required degrees-per-second units and no longer advertises unsupported adjustable guide rates. Version 1.0.21 added reference-counted, serialized sharing of one physical Temma connection across multiple ASCOM clients. Version 1.0.20 was exercised with a real Temma mount for connection, OTA-East initialization, sync, repeated GOTO slews, slew completion, and abort behavior. Counterweight-reference and park/unpark/reconnect behavior were also verified with the companion Temma simulator.
 
 ## Author
 
