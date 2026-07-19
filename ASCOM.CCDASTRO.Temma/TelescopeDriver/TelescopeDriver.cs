@@ -12,6 +12,7 @@ using ASCOM.LocalServer;
 using ASCOM.Utilities;
 using System;
 using System.Collections;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,7 +63,6 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private DriverSettings settings;
 
         private const double SIDEREAL_RATE_DEG_SEC = 360.0 / 86164.0905;
-        private const double TEMMA_GUIDE_RATE_DEG_SEC = SIDEREAL_RATE_DEG_SEC * 0.5;
         private AxisRates axisRates;
 
         private double currentRightAscension;
@@ -568,6 +568,11 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     }
 
                     ConfigureMountSpeed();
+                    if (settings.SendRate)
+                    {
+                        SetTemmaGuideRate("LA", settings.GuideRateRA * SIDEREAL_RATE_DEG_SEC, "RA");
+                        SetTemmaGuideRate("LB", settings.GuideRateDec * SIDEREAL_RATE_DEG_SEC, "Declination");
+                    }
                     ConfigureAxisRates();
                 });
                 acquired = true;
@@ -1280,7 +1285,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public bool CanPark { get { return true; } }
         public bool CanPulseGuide { get { return true; } }
         public bool CanSetDeclinationRate { get { return false; } }
-        public bool CanSetGuideRates { get { return false; } }
+        public bool CanSetGuideRates { get { return true; } }
         public bool CanSetPark { get { return true; } }
         public bool CanSetPierSide { get { return false; } }
         public bool CanSetRightAscensionRate { get { return false; } }
@@ -1303,11 +1308,12 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get
             {
                 CheckConnected("GuideRateDeclination");
-                return TEMMA_GUIDE_RATE_DEG_SEC;
+                return QueryTemmaGuideRate("lb", "Declination");
             }
             set
             {
-                throw new PropertyNotImplementedException("GuideRateDeclination", true);
+                SetTemmaGuideRate("LB", value, "Declination");
+                settings.GuideRateDec = value / SIDEREAL_RATE_DEG_SEC;
             }
         }
 
@@ -1316,12 +1322,65 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get
             {
                 CheckConnected("GuideRateRightAscension");
-                return TEMMA_GUIDE_RATE_DEG_SEC;
+                return QueryTemmaGuideRate("la", "RA");
             }
             set
             {
-                throw new PropertyNotImplementedException("GuideRateRightAscension", true);
+                SetTemmaGuideRate("LA", value, "RA");
+                settings.GuideRateRA = value / SIDEREAL_RATE_DEG_SEC;
             }
+        }
+
+        private double QueryTemmaGuideRate(string command, string axisName)
+        {
+            string response = (SendCommand(command) ?? string.Empty).Trim();
+            int percentage;
+
+            // Match the VB6 driver: Mid$(response, 5, 2).
+            if (response.Length < 6 ||
+                !int.TryParse(
+                    response.Substring(4, 2),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out percentage))
+            {
+                throw new InvalidOperationException(
+                    "Temma returned an invalid " + axisName +
+                    " guide-rate response: " + EscapeForLog(response));
+            }
+
+            return (percentage / 100.0) * SIDEREAL_RATE_DEG_SEC;
+        }
+
+        private void SetTemmaGuideRate(string command, double rateDegreesPerSecond, string axisName)
+        {
+            CheckConnected("GuideRate" + axisName);
+
+            int percentage = (int)Math.Round(
+                (rateDegreesPerSecond / SIDEREAL_RATE_DEG_SEC) * 100.0);
+
+            if (percentage < 10 || percentage > 99)
+            {
+                throw new InvalidValueException(
+                    "GuideRate" + axisName,
+                    rateDegreesPerSecond.ToString("R", CultureInfo.InvariantCulture),
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        "{0:R} to {1:R} degrees per second (10% to 99% sidereal)",
+                        SIDEREAL_RATE_DEG_SEC * 0.10,
+                        SIDEREAL_RATE_DEG_SEC * 0.99));
+            }
+
+            SendBlindTemmaCommand(
+                command + percentage.ToString("00", CultureInfo.InvariantCulture));
+            LogMessage(
+                "GuideRate",
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} guide rate set to {1}% ({2:R} degrees/second)",
+                    axisName,
+                    percentage,
+                    (percentage / 100.0) * SIDEREAL_RATE_DEG_SEC));
         }
         public bool IsPulseGuiding { get { return pulseGuiding; } }
         public void MoveAxis(TelescopeAxes axis, double rate)
