@@ -1178,7 +1178,19 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private bool QueryTrackingStateOrThrow()
         {
-            string response = (SendCommand("STN-COD") ?? string.Empty).Trim();
+            // A preceding Temma blind command can leave a late status byte in
+            // the shared receive buffer. Start this state query clean so a
+            // second ASCOM client cannot consume that stale reply as STN-COD.
+            const string command = "STN-COD\r\n";
+            LogMessage("TX", EscapeForLog(command));
+            string response = SharedResources.WithSerial(port =>
+            {
+                port.ClearBuffers();
+                port.Transmit(command);
+                return port.ReceiveTerminated("\r\n");
+            });
+            LogMessage("RX", EscapeForLog(response));
+            response = (response ?? string.Empty).Trim();
 
             if (string.Equals(response, "stn-off", StringComparison.OrdinalIgnoreCase))
                 return true; // Standby OFF: RA motor is tracking.
@@ -1371,8 +1383,18 @@ namespace ASCOM.CCDASTROTemma.Telescope
                         SIDEREAL_RATE_DEG_SEC * 0.99));
             }
 
-            SendBlindTemmaCommand(
-                command + percentage.ToString("00", CultureInfo.InvariantCulture));
+            // The legacy VB6 implementation deliberately used CommandBlind for
+            // LA/LB. Some Temma controllers still emit a status byte for these
+            // commands; discard it before another client performs a query.
+            string framedCommand =
+                command + percentage.ToString("00", CultureInfo.InvariantCulture) + "\r\n";
+            LogMessage("Blind TX", EscapeForLog(framedCommand));
+            SharedResources.WithSerial(port =>
+            {
+                port.Transmit(framedCommand);
+                Thread.Sleep(50);
+                port.ClearBuffers();
+            });
             LogMessage(
                 "GuideRate",
                 string.Format(
