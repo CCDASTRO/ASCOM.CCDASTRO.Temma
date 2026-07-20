@@ -15,6 +15,7 @@ Current version: **1.0.28**
 - OTA East, OTA West, Counterweight Down, and Counterweight West startup references
 - Driver-side ASCOM park and unpark state
 - Multi-client ASCOM local-server operation and optional diagnostic logging
+- Pulseguiding
 
 Supported mount selections include EM-11, EM-11 Temma 2M, EM-200, EM-200 Temma 2M, NJP, and EM-500.
 
