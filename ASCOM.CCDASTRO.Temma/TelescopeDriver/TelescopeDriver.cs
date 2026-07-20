@@ -38,7 +38,16 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private bool isParked;
         private volatile bool pulseGuiding;
         private readonly object pulseGuideLock = new object();
-        private CancellationTokenSource pulseGuideCancellation;
+        private CancellationTokenSource pulseGuideRaCancellation;
+        private CancellationTokenSource pulseGuideDecCancellation;
+        private string pulseGuideRaCommand;
+        private string pulseGuideDecCommand;
+
+        private enum PulseGuideAxis
+        {
+            RightAscension,
+            Declination
+        }
 
         private int slewVerificationGeneration = 0;
         private readonly object slewVerificationLock = new object();
@@ -1564,12 +1573,25 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 throw new ASCOM.InvalidOperationException("PulseGuide cannot start while the mount is slewing.");
 
             string directionCommand;
+            PulseGuideAxis pulseAxis;
             switch (direction)
             {
-                case GuideDirections.guideNorth: directionCommand = "MH"; break;
-                case GuideDirections.guideSouth: directionCommand = "MP"; break;
-                case GuideDirections.guideEast:  directionCommand = "MD"; break;
-                case GuideDirections.guideWest:  directionCommand = "MB"; break;
+                case GuideDirections.guideNorth:
+                    directionCommand = "MH";
+                    pulseAxis = PulseGuideAxis.Declination;
+                    break;
+                case GuideDirections.guideSouth:
+                    directionCommand = "MP";
+                    pulseAxis = PulseGuideAxis.Declination;
+                    break;
+                case GuideDirections.guideEast:
+                    directionCommand = "MD";
+                    pulseAxis = PulseGuideAxis.RightAscension;
+                    break;
+                case GuideDirections.guideWest:
+                    directionCommand = "MB";
+                    pulseAxis = PulseGuideAxis.RightAscension;
+                    break;
                 default:
                     throw new InvalidValueException("Unsupported guide direction.");
             }
@@ -1580,40 +1602,38 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CancellationTokenSource cancellation;
             lock (pulseGuideLock)
             {
-                if (pulseGuiding)
+                CancellationTokenSource activeAxisCancellation =
+                    pulseAxis == PulseGuideAxis.RightAscension
+                        ? pulseGuideRaCancellation
+                        : pulseGuideDecCancellation;
+                if (activeAxisCancellation != null)
                     throw new ASCOM.InvalidOperationException(
-                        "The Temma controller cannot run overlapping PulseGuide operations.");
+                        "A PulseGuide operation is already active on this axis.");
 
                 cancellation = new CancellationTokenSource();
-                pulseGuideCancellation = cancellation;
+                SetPulseGuideAxisState(pulseAxis, cancellation, directionCommand);
                 pulseGuiding = true;
-            }
 
-            try
-            {
-                // Do not return until the controller has accepted the first
-                // guide-motion command. Completion remains asynchronous.
-                SendBlindTemmaCommand(directionCommand);
-            }
-            catch
-            {
-                lock (pulseGuideLock)
+                try
                 {
-                    if (ReferenceEquals(pulseGuideCancellation, cancellation))
-                    {
-                        pulseGuideCancellation = null;
-                        pulseGuiding = false;
-                    }
+                    // Temma latches RA and Declination motion independently,
+                    // so a command on the other axis can be added in parallel.
+                    SendBlindTemmaCommand(directionCommand);
                 }
-                cancellation.Dispose();
-                throw;
+                catch
+                {
+                    ClearPulseGuideAxisState(pulseAxis, cancellation);
+                    pulseGuiding = pulseGuideRaCancellation != null || pulseGuideDecCancellation != null;
+                    cancellation.Dispose();
+                    throw;
+                }
             }
 
-            Task.Run(() => ExecutePulseGuide(directionCommand, duration, cancellation));
+            Task.Run(() => ExecutePulseGuide(pulseAxis, duration, cancellation));
         }
 
         private void ExecutePulseGuide(
-            string directionCommand,
+            PulseGuideAxis pulseAxis,
             int duration,
             CancellationTokenSource cancellation)
         {
@@ -1626,49 +1646,144 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 {
                     int segment = Math.Min(remaining, 3000);
                     bool cancelled = cancellation.Token.WaitHandle.WaitOne(segment);
-                    SendBlindTemmaCommand("M@");
                     if (cancelled) break;
                     remaining -= segment;
-                    if (remaining > 0)
-                        SendBlindTemmaCommand(directionCommand);
+                    CompletePulseGuideSegment(pulseAxis, cancellation, remaining > 0);
                 }
             }
             catch (Exception ex)
             {
                 LogMessage("PulseGuide ERROR", ex.ToString());
-                try
-                {
-                    if (SharedResources.Connected)
-                        SendBlindTemmaCommand("M@");
-                }
-                catch { }
+                StopPulseAxisAfterError(pulseAxis, cancellation);
             }
             finally
             {
                 lock (pulseGuideLock)
                 {
-                    if (ReferenceEquals(pulseGuideCancellation, cancellation))
-                    {
-                        pulseGuideCancellation = null;
-                        pulseGuiding = false;
-                    }
+                    ClearPulseGuideAxisState(pulseAxis, cancellation);
+                    pulseGuiding = pulseGuideRaCancellation != null || pulseGuideDecCancellation != null;
                 }
                 cancellation.Dispose();
             }
         }
 
-        private void CancelPulseGuide(bool sendStop)
+        private void CompletePulseGuideSegment(
+            PulseGuideAxis pulseAxis,
+            CancellationTokenSource cancellation,
+            bool continueAxis)
         {
-            CancellationTokenSource cancellation;
             lock (pulseGuideLock)
-                cancellation = pulseGuideCancellation;
+            {
+                if (!IsPulseGuideAxisState(pulseAxis, cancellation))
+                    return;
 
-            if (cancellation == null)
+                if (!continueAxis)
+                    ClearPulseGuideAxisState(pulseAxis, cancellation);
+
+                // M@ stops both axes. Re-issue every command that remains
+                // active, including this axis after a three-second segment.
+                SendBlindTemmaCommand("M@");
+                if (pulseGuideRaCancellation != null)
+                    SendBlindTemmaCommand(pulseGuideRaCommand);
+                if (pulseGuideDecCancellation != null)
+                    SendBlindTemmaCommand(pulseGuideDecCommand);
+
+                pulseGuiding = pulseGuideRaCancellation != null || pulseGuideDecCancellation != null;
+            }
+        }
+
+        private void StopPulseAxisAfterError(
+            PulseGuideAxis pulseAxis,
+            CancellationTokenSource cancellation)
+        {
+            lock (pulseGuideLock)
+            {
+                if (!IsPulseGuideAxisState(pulseAxis, cancellation))
+                    return;
+
+                ClearPulseGuideAxisState(pulseAxis, cancellation);
+                try
+                {
+                    if (SharedResources.Connected)
+                    {
+                        SendBlindTemmaCommand("M@");
+                        if (pulseGuideRaCancellation != null)
+                            SendBlindTemmaCommand(pulseGuideRaCommand);
+                        if (pulseGuideDecCancellation != null)
+                            SendBlindTemmaCommand(pulseGuideDecCommand);
+                    }
+                }
+                catch { }
+                pulseGuiding = pulseGuideRaCancellation != null || pulseGuideDecCancellation != null;
+            }
+        }
+
+        private void SetPulseGuideAxisState(
+            PulseGuideAxis pulseAxis,
+            CancellationTokenSource cancellation,
+            string command)
+        {
+            if (pulseAxis == PulseGuideAxis.RightAscension)
+            {
+                pulseGuideRaCancellation = cancellation;
+                pulseGuideRaCommand = command;
+            }
+            else
+            {
+                pulseGuideDecCancellation = cancellation;
+                pulseGuideDecCommand = command;
+            }
+        }
+
+        private bool IsPulseGuideAxisState(
+            PulseGuideAxis pulseAxis,
+            CancellationTokenSource cancellation)
+        {
+            return ReferenceEquals(
+                pulseAxis == PulseGuideAxis.RightAscension
+                    ? pulseGuideRaCancellation
+                    : pulseGuideDecCancellation,
+                cancellation);
+        }
+
+        private void ClearPulseGuideAxisState(
+            PulseGuideAxis pulseAxis,
+            CancellationTokenSource cancellation)
+        {
+            if (!IsPulseGuideAxisState(pulseAxis, cancellation))
                 return;
 
-            try { cancellation.Cancel(); } catch { }
+            if (pulseAxis == PulseGuideAxis.RightAscension)
+            {
+                pulseGuideRaCancellation = null;
+                pulseGuideRaCommand = null;
+            }
+            else
+            {
+                pulseGuideDecCancellation = null;
+                pulseGuideDecCommand = null;
+            }
+        }
 
-            if (sendStop && connectedState)
+        private void CancelPulseGuide(bool sendStop)
+        {
+            CancellationTokenSource raCancellation;
+            CancellationTokenSource decCancellation;
+            lock (pulseGuideLock)
+            {
+                raCancellation = pulseGuideRaCancellation;
+                decCancellation = pulseGuideDecCancellation;
+                pulseGuideRaCancellation = null;
+                pulseGuideDecCancellation = null;
+                pulseGuideRaCommand = null;
+                pulseGuideDecCommand = null;
+                pulseGuiding = false;
+            }
+
+            try { if (raCancellation != null) raCancellation.Cancel(); } catch { }
+            try { if (decCancellation != null) decCancellation.Cancel(); } catch { }
+
+            if (sendStop && connectedState && (raCancellation != null || decCancellation != null))
             {
                 try { SendBlindTemmaCommand("M@"); } catch { }
             }
