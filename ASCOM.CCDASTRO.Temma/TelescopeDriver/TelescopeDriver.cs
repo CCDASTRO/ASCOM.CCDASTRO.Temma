@@ -233,6 +233,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 if (value)
                 {
                     ConnectToMount();
+                    ResetTargetCoordinates();
                     connectedState = true;
                 }
                 else
@@ -315,6 +316,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get
             {
                 CheckConnected("TargetRightAscension");
+                LogMessage("TargetRightAscension Get", "Initialized=" + targetRightAscensionSet);
                 if (!targetRightAscensionSet)
                     throw new ASCOM.InvalidOperationException("TargetRightAscension has not been set.");
                 if (isParked) throw new ParkedException("The mount is parked.");
@@ -336,6 +338,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get
             {
                 CheckConnected("TargetDeclination");
+                LogMessage("TargetDeclination Get", "Initialized=" + targetDeclinationSet);
                 if (!targetDeclinationSet)
                     throw new ASCOM.InvalidOperationException("TargetDeclination has not been set.");
                 if (isParked) throw new ParkedException("The mount is parked.");
@@ -699,6 +702,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
             pulseGuiding = false;
 
             LogMessage("Disconnect", "Disconnected");
+        }
+
+        private void ResetTargetCoordinates()
+        {
+            targetRightAscension = 0.0;
+            targetDeclination = 0.0;
+            targetRightAscensionSet = false;
+            targetDeclinationSet = false;
+            LogMessage("Target coordinates", "Reset to unset for new connection.");
         }
 
         private string SendCommand(string command, bool raw = false)
