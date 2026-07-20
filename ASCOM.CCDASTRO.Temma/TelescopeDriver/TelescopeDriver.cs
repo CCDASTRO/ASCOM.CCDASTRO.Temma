@@ -36,7 +36,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private bool isSlewing;
         private bool tracking;
         private bool isParked;
-        private bool pulseGuiding;
+        private volatile bool pulseGuiding;
+        private readonly object pulseGuideLock = new object();
+        private CancellationTokenSource pulseGuideCancellation;
 
         private int slewVerificationGeneration = 0;
         private readonly object slewVerificationLock = new object();
@@ -63,11 +65,14 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private DriverSettings settings;
 
         private const double SIDEREAL_RATE_DEG_SEC = 360.0 / 86164.0905;
-        private AxisRates axisRates;
 
         private double currentRightAscension;
         private double currentDeclination;
         private DateTime lastCoordinateUpdate = DateTime.MinValue;
+        private double targetRightAscension;
+        private double targetDeclination;
+        private bool targetRightAscensionSet;
+        private bool targetDeclinationSet;
 
         #region ASCOM Registration
 
@@ -111,8 +116,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
             tl.Enabled = settings.TraceEnabled;
 
             tracking = true;
-            TargetRightAscension = 0.0;
-            TargetDeclination = 0.0;
+            targetRightAscension = 0.0;
+            targetDeclination = 0.0;
+            targetRightAscensionSet = false;
+            targetDeclinationSet = false;
         }
 
         ~Telescope()
@@ -139,6 +146,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 {
                     try
                     {
+                        CancelPulseGuide(true);
                         SharedResources.ReleaseConnection();
                     }
                     catch
@@ -280,6 +288,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             set
             {
                 CheckConnected("Tracking");
+                if (value && isParked)
+                    throw new ParkedException("Tracking cannot be enabled while the mount is parked.");
                 if (tracking == value) return;
 
                 SetTrackingStateOrThrow(value);
@@ -300,8 +310,47 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
         }
 
-        public double TargetRightAscension { get; set; }
-        public double TargetDeclination { get; set; }
+        public double TargetRightAscension
+        {
+            get
+            {
+                CheckConnected("TargetRightAscension");
+                if (isParked) throw new ParkedException("The mount is parked.");
+                if (!targetRightAscensionSet)
+                    throw new InvalidOperationException("TargetRightAscension has not been set.");
+                return targetRightAscension;
+            }
+            set
+            {
+                CheckConnected("TargetRightAscension");
+                if (isParked) throw new ParkedException("The mount is parked.");
+                if (value < 0.0 || value > 24.0)
+                    throw new InvalidValueException("TargetRightAscension", value.ToString(CultureInfo.InvariantCulture), "0 to 24 hours");
+                targetRightAscension = value;
+                targetRightAscensionSet = true;
+            }
+        }
+
+        public double TargetDeclination
+        {
+            get
+            {
+                CheckConnected("TargetDeclination");
+                if (isParked) throw new ParkedException("The mount is parked.");
+                if (!targetDeclinationSet)
+                    throw new InvalidOperationException("TargetDeclination has not been set.");
+                return targetDeclination;
+            }
+            set
+            {
+                CheckConnected("TargetDeclination");
+                if (isParked) throw new ParkedException("The mount is parked.");
+                if (value < -90.0 || value > 90.0)
+                    throw new InvalidValueException("TargetDeclination", value.ToString(CultureInfo.InvariantCulture), "-90 to +90 degrees");
+                targetDeclination = value;
+                targetDeclinationSet = true;
+            }
+        }
 
         public double SiderealTime
         {
@@ -330,6 +379,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public void AbortSlew()
         {
             CheckConnected("AbortSlew");
+            if (isParked) throw new ParkedException("The mount is parked.");
+            CancelPulseGuide(true);
             CancelSlewStartVerification();
             SendBlindTemmaCommand(TemmaProtocol.BuildAbortCommand());
             isSlewing = false;
@@ -357,8 +408,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CheckConnected("SlewToCoordinatesAsync");
             if (isParked) throw new ParkedException("The mount is parked.");
             if (isSlewing) return;
-            if (rightAscension < 0.0 || rightAscension >= 24.0)
-                throw new InvalidValueException("RightAscension", rightAscension.ToString(), "0 to less than 24 hours");
+            if (rightAscension < 0.0 || rightAscension > 24.0)
+                throw new InvalidValueException("RightAscension", rightAscension.ToString(), "0 to 24 hours");
             if (declination < -90.0 || declination > 90.0)
                 throw new InvalidValueException("Declination", declination.ToString(), "-90 to +90 degrees");
 
@@ -505,10 +556,6 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private void ConfigureAxisRates()
         {
-            // Your custom AxisRates class creates its own rate collection.
-            // We only log the selected multiplier here.
-            axisRates = null;
-
             LogMessage(
                 "ConfigureAxisRates",
                 string.Format(
@@ -643,6 +690,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private void DisconnectFromMount()
         {
+            CancelPulseGuide(true);
             SharedResources.ReleaseConnection();
 
             tracking = false;
@@ -1269,15 +1317,23 @@ namespace ASCOM.CCDASTROTemma.Telescope
             CheckConnected("AxisRates");
 
             if (axis != TelescopeAxes.axisPrimary &&
-                axis != TelescopeAxes.axisSecondary)
+                axis != TelescopeAxes.axisSecondary &&
+                axis != TelescopeAxes.axisTertiary)
             {
                 throw new InvalidValueException(
                     "Axis",
                     ((int)axis).ToString(),
-                    "0 or 1");
+                    "0, 1 or 2");
             }
 
-            return new AxisRates(axis);
+            if (axis == TelescopeAxes.axisTertiary)
+                return new AxisRates(axis, 0.0, 0.0);
+
+            double guideRate = axis == TelescopeAxes.axisPrimary
+                ? settings.GuideRateRA * SIDEREAL_RATE_DEG_SEC
+                : settings.GuideRateDec * SIDEREAL_RATE_DEG_SEC;
+            double slewRate = GetSlewRateMultiplier() * SIDEREAL_RATE_DEG_SEC;
+            return new AxisRates(axis, guideRate, slewRate);
         }
 
         public double Azimuth
@@ -1293,7 +1349,16 @@ namespace ASCOM.CCDASTROTemma.Telescope
             }
         }
         public bool CanFindHome { get { return false; } }
-        public bool CanMoveAxis(TelescopeAxes axis) { return axis != TelescopeAxes.axisTertiary; }
+        public bool CanMoveAxis(TelescopeAxes axis)
+        {
+            if (axis != TelescopeAxes.axisPrimary &&
+                axis != TelescopeAxes.axisSecondary &&
+                axis != TelescopeAxes.axisTertiary)
+            {
+                throw new InvalidValueException("Axis", ((int)axis).ToString(), "0, 1 or 2");
+            }
+            return axis != TelescopeAxes.axisTertiary;
+        }
         public bool CanPark { get { return true; } }
         public bool CanPulseGuide { get { return true; } }
         public bool CanSetDeclinationRate { get { return false; } }
@@ -1309,11 +1374,25 @@ namespace ASCOM.CCDASTROTemma.Telescope
         public bool CanSync { get { return true; } }
         public bool CanSyncAltAz { get { return false; } }
         public bool CanUnpark { get { return true; } }
-        public double DeclinationRate { get { return 0.0; } set { } }
-        public PierSide DestinationSideOfPier(double rightAscension, double declination) { return PierSide.pierUnknown; }
+        public double DeclinationRate
+        {
+            get { CheckConnected("DeclinationRate"); return 0.0; }
+            set { throw new PropertyNotImplementedException("DeclinationRate", true); }
+        }
+        public PierSide DestinationSideOfPier(double rightAscension, double declination)
+        {
+            CheckConnected("DestinationSideOfPier");
+            if (rightAscension < 0.0 || rightAscension > 24.0)
+                throw new InvalidValueException("RightAscension", rightAscension.ToString(CultureInfo.InvariantCulture), "0 to 24 hours");
+            if (declination < -90.0 || declination > 90.0)
+                throw new InvalidValueException("Declination", declination.ToString(CultureInfo.InvariantCulture), "-90 to +90 degrees");
+
+            double hourAngle = NormalizeSignedHours(SiderealTime - rightAscension);
+            return hourAngle >= 0.0 ? PierSide.pierEast : PierSide.pierWest;
+        }
         public bool DoesRefraction { get { return false; } set { } }
         public EquatorialCoordinateType EquatorialSystem { get { return EquatorialCoordinateType.equTopocentric; } }
-        public void FindHome() { }
+        public void FindHome() { throw new MethodNotImplementedException("FindHome"); }
         public double FocalLength { get { return settings.FocalLength; } }
         public double GuideRateDeclination
         {
@@ -1404,7 +1483,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     percentage,
                     (percentage / 100.0) * SIDEREAL_RATE_DEG_SEC));
         }
-        public bool IsPulseGuiding { get { return pulseGuiding; } }
+        public bool IsPulseGuiding
+        {
+            get { CheckConnected("IsPulseGuiding"); return pulseGuiding; }
+        }
         public void MoveAxis(TelescopeAxes axis, double rate)
         {
             CheckConnected("MoveAxis");
@@ -1426,8 +1508,19 @@ namespace ASCOM.CCDASTROTemma.Telescope
             // Low/high speed selection is based on half of the advertised
             // maximum rate for the selected axis.
             double maxRate = 0.0;
+            bool supportedRate = false;
             foreach (IRate r in AxisRates(axis))
+            {
                 if (r.Maximum > maxRate) maxRate = r.Maximum;
+                if (Math.Abs(Math.Abs(rate) - r.Maximum) < 0.000000001)
+                    supportedRate = true;
+            }
+
+            if (!supportedRate)
+                throw new InvalidValueException(
+                    "Rate",
+                    rate.ToString("R", CultureInfo.InvariantCulture),
+                    "one of the discrete rates returned by AxisRates");
 
             bool highSpeed = maxRate > 0.0 && Math.Abs(rate) >= (maxRate / 2.0);
             string command;
@@ -1452,6 +1545,10 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             if (duration < 0)
                 throw new InvalidValueException("Duration must be zero or greater.");
+            if (!tracking)
+                throw new ASCOM.InvalidOperationException("PulseGuide requires tracking to be enabled.");
+            if (isSlewing)
+                throw new ASCOM.InvalidOperationException("PulseGuide cannot start while the mount is slewing.");
 
             string directionCommand;
             switch (direction)
@@ -1464,28 +1561,111 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     throw new InvalidValueException("Unsupported guide direction.");
             }
 
-            pulseGuiding = true;
+            if (duration == 0)
+                return;
+
+            CancellationTokenSource cancellation;
+            lock (pulseGuideLock)
+            {
+                if (pulseGuiding)
+                    throw new ASCOM.InvalidOperationException(
+                        "The Temma controller cannot run overlapping PulseGuide operations.");
+
+                cancellation = new CancellationTokenSource();
+                pulseGuideCancellation = cancellation;
+                pulseGuiding = true;
+            }
+
             try
             {
-                int remaining = Math.Max(duration, 100);
+                // Do not return until the controller has accepted the first
+                // guide-motion command. Completion remains asynchronous.
+                SendBlindTemmaCommand(directionCommand);
+            }
+            catch
+            {
+                lock (pulseGuideLock)
+                {
+                    if (ReferenceEquals(pulseGuideCancellation, cancellation))
+                    {
+                        pulseGuideCancellation = null;
+                        pulseGuiding = false;
+                    }
+                }
+                cancellation.Dispose();
+                throw;
+            }
+
+            Task.Run(() => ExecutePulseGuide(directionCommand, duration, cancellation));
+        }
+
+        private void ExecutePulseGuide(
+            string directionCommand,
+            int duration,
+            CancellationTokenSource cancellation)
+        {
+            try
+            {
+                int remaining = duration;
 
                 // The working VB6 driver limits each continuous pulse to 3000 ms.
-                while (remaining > 0)
+                while (remaining > 0 && !cancellation.IsCancellationRequested)
                 {
                     int segment = Math.Min(remaining, 3000);
-                    SendBlindTemmaCommand(directionCommand);
-                    Thread.Sleep(segment);
+                    bool cancelled = cancellation.Token.WaitHandle.WaitOne(segment);
                     SendBlindTemmaCommand("M@");
+                    if (cancelled) break;
                     remaining -= segment;
+                    if (remaining > 0)
+                        SendBlindTemmaCommand(directionCommand);
                 }
+            }
+            catch (Exception ex)
+            {
+                LogMessage("PulseGuide ERROR", ex.ToString());
+                try
+                {
+                    if (SharedResources.Connected)
+                        SendBlindTemmaCommand("M@");
+                }
+                catch { }
             }
             finally
             {
-                pulseGuiding = false;
+                lock (pulseGuideLock)
+                {
+                    if (ReferenceEquals(pulseGuideCancellation, cancellation))
+                    {
+                        pulseGuideCancellation = null;
+                        pulseGuiding = false;
+                    }
+                }
+                cancellation.Dispose();
             }
         }
 
-        public double RightAscensionRate { get { return 0.0; } set { } }
+        private void CancelPulseGuide(bool sendStop)
+        {
+            CancellationTokenSource cancellation;
+            lock (pulseGuideLock)
+                cancellation = pulseGuideCancellation;
+
+            if (cancellation == null)
+                return;
+
+            try { cancellation.Cancel(); } catch { }
+
+            if (sendStop && connectedState)
+            {
+                try { SendBlindTemmaCommand("M@"); } catch { }
+            }
+        }
+
+        public double RightAscensionRate
+        {
+            get { CheckConnected("RightAscensionRate"); return 0.0; }
+            set { throw new PropertyNotImplementedException("RightAscensionRate", true); }
+        }
         public void SetPark()
         {
             CheckConnected("SetPark");
@@ -1501,14 +1681,59 @@ namespace ASCOM.CCDASTROTemma.Telescope
             LogMessage("SetPark", string.Format("Saved park position: Az={0:F4}, Alt={1:F4}", azimuth, altitude));
         }
         public PierSide SideOfPier { get { return ReadPierSide(); } set { throw new MethodNotImplementedException("SideOfPier set"); } }
-        public double SiteElevation { get { return settings.SiteElevation; } set { settings.SiteElevation = value; } }
-        public double SiteLatitude { get { return settings.SiteLatitude; } set { settings.SiteLatitude = value; } }
-        public double SiteLongitude { get { return settings.SiteLongitude; } set { settings.SiteLongitude = value; } }
-        public short SlewSettleTime { get { return settings.SlewSettleTime; } set { settings.SlewSettleTime = value; } }
-        public void SlewToAltAz(double azimuth, double altitude) { }
-        public void SlewToAltAzAsync(double azimuth, double altitude) { }
-        public void SyncToAltAz(double azimuth, double altitude) { }
-        public DriveRates TrackingRate { get { return DriveRates.driveSidereal; } set { } }
+        public double SiteElevation
+        {
+            get { return settings.SiteElevation; }
+            set
+            {
+                if (value < -300.0 || value > 10000.0)
+                    throw new InvalidValueException("SiteElevation", value.ToString(CultureInfo.InvariantCulture), "-300 to 10000 metres");
+                settings.SiteElevation = value;
+            }
+        }
+        public double SiteLatitude
+        {
+            get { return settings.SiteLatitude; }
+            set
+            {
+                if (value < -90.0 || value > 90.0)
+                    throw new InvalidValueException("SiteLatitude", value.ToString(CultureInfo.InvariantCulture), "-90 to +90 degrees");
+                settings.SiteLatitude = value;
+            }
+        }
+        public double SiteLongitude
+        {
+            get { return settings.SiteLongitude; }
+            set
+            {
+                if (value < -180.0 || value > 180.0)
+                    throw new InvalidValueException("SiteLongitude", value.ToString(CultureInfo.InvariantCulture), "-180 to +180 degrees");
+                settings.SiteLongitude = value;
+            }
+        }
+        public short SlewSettleTime
+        {
+            get { return settings.SlewSettleTime; }
+            set
+            {
+                if (value < 0)
+                    throw new InvalidValueException("SlewSettleTime", value.ToString(CultureInfo.InvariantCulture), "zero or greater");
+                settings.SlewSettleTime = value;
+            }
+        }
+        public void SlewToAltAz(double azimuth, double altitude) { throw new MethodNotImplementedException("SlewToAltAz"); }
+        public void SlewToAltAzAsync(double azimuth, double altitude) { throw new MethodNotImplementedException("SlewToAltAzAsync"); }
+        public void SyncToAltAz(double azimuth, double altitude) { throw new MethodNotImplementedException("SyncToAltAz"); }
+        public DriveRates TrackingRate
+        {
+            get { CheckConnected("TrackingRate"); return DriveRates.driveSidereal; }
+            set
+            {
+                CheckConnected("TrackingRate");
+                if (value != DriveRates.driveSidereal)
+                    throw new InvalidValueException("TrackingRate", ((int)value).ToString(CultureInfo.InvariantCulture), "Sidereal");
+            }
+        }
         public ITrackingRates TrackingRates { get { return new TrackingRates(); } }
         public DateTime UTCDate { get { return DateTime.UtcNow; } set { } }
 

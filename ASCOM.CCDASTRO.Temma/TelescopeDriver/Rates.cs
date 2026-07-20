@@ -78,7 +78,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         // Constructor - Internal prevents public creation
         // of instances. Returned by Telescope.AxisRates.
         //
-        internal AxisRates(TelescopeAxes axis)
+        internal AxisRates(TelescopeAxes axis, double guideRate, double slewRate)
         {
             this.axis = axis;
             //
@@ -94,19 +94,27 @@ namespace ASCOM.CCDASTROTemma.Telescope
             switch (axis)
             {
                 case TelescopeAxes.axisPrimary:
-                    // TODO Initialize this array with any Primary axis rates that your driver may provide
-                    // Example: m_Rates = new Rate[] { new Rate(10.5, 30.2), new Rate(54.0, 43.6) }
-                    this.rates = new Rate[0];
+                    this.rates = CreateDiscreteRates(guideRate, slewRate);
                     break;
                 case TelescopeAxes.axisSecondary:
-                    // TODO Initialize this array with any Secondary axis rates that your driver may provide
-                    this.rates = new Rate[0];
+                    this.rates = CreateDiscreteRates(guideRate, slewRate);
                     break;
                 case TelescopeAxes.axisTertiary:
                     // TODO Initialize this array with any Tertiary axis rates that your driver may provide
                     this.rates = new Rate[0];
                     break;
             }
+        }
+
+        private static Rate[] CreateDiscreteRates(double guideRate, double slewRate)
+        {
+            if (guideRate <= 0.0 || slewRate <= 0.0)
+                return new Rate[0];
+            return new[]
+            {
+                new Rate(guideRate, guideRate),
+                new Rate(slewRate, slewRate)
+            };
         }
 
         #region IAxisRates Members
