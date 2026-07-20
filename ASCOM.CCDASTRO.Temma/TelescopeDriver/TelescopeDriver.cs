@@ -1083,8 +1083,6 @@ namespace ASCOM.CCDASTROTemma.Telescope
         {
             HorizontalToEquatorial(settings.ParkAzimuth, settings.ParkAltitude,
                                    out currentRightAscension, out currentDeclination);
-            TargetRightAscension = currentRightAscension;
-            TargetDeclination = currentDeclination;
             lastCoordinateUpdate = DateTime.UtcNow;
 
             LogMessage("Connect", string.Format(
@@ -1447,20 +1445,23 @@ namespace ASCOM.CCDASTROTemma.Telescope
         {
             CheckConnected("GuideRate" + axisName);
 
-            int percentage = (int)Math.Round(
-                (rateDegreesPerSecond / SIDEREAL_RATE_DEG_SEC) * 100.0);
-
-            if (percentage < 10 || percentage > 99)
+            double maximumRate = SIDEREAL_RATE_DEG_SEC * 0.99;
+            if (double.IsNaN(rateDegreesPerSecond) ||
+                double.IsInfinity(rateDegreesPerSecond) ||
+                rateDegreesPerSecond < 0.0 ||
+                rateDegreesPerSecond > maximumRate)
             {
                 throw new InvalidValueException(
                     "GuideRate" + axisName,
                     rateDegreesPerSecond.ToString("R", CultureInfo.InvariantCulture),
                     string.Format(
                         CultureInfo.InvariantCulture,
-                        "{0:R} to {1:R} degrees per second (10% to 99% sidereal)",
-                        SIDEREAL_RATE_DEG_SEC * 0.10,
-                        SIDEREAL_RATE_DEG_SEC * 0.99));
+                        "0 to {0:R} degrees per second (0% to 99% sidereal)",
+                        maximumRate));
             }
+
+            int percentage = (int)Math.Round(
+                (rateDegreesPerSecond / SIDEREAL_RATE_DEG_SEC) * 100.0);
 
             // The legacy VB6 implementation deliberately used CommandBlind for
             // LA/LB. Some Temma controllers still emit a status byte for these
