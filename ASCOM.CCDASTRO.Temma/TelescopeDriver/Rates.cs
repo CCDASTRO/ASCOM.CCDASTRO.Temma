@@ -108,8 +108,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private static Rate[] CreateDiscreteRates(double guideRate, double slewRate)
         {
-            if (guideRate <= 0.0 || slewRate <= 0.0)
+            if (slewRate <= 0.0)
                 return new Rate[0];
+
+            // A zero programmable guide rate is valid for the Temma, but it
+            // is not a usable MoveAxis rate. Always advertise the independent
+            // non-zero slew rate and add the guide rate only when usable.
+            if (guideRate <= 0.0 || guideRate == slewRate)
+                return new[] { new Rate(slewRate, slewRate) };
+
             return new[]
             {
                 new Rate(guideRate, guideRate),

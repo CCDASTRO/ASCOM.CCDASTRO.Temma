@@ -315,9 +315,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get
             {
                 CheckConnected("TargetRightAscension");
-                if (isParked) throw new ParkedException("The mount is parked.");
                 if (!targetRightAscensionSet)
                     throw new InvalidOperationException("TargetRightAscension has not been set.");
+                if (isParked) throw new ParkedException("The mount is parked.");
                 return targetRightAscension;
             }
             set
@@ -336,9 +336,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
             get
             {
                 CheckConnected("TargetDeclination");
-                if (isParked) throw new ParkedException("The mount is parked.");
                 if (!targetDeclinationSet)
                     throw new InvalidOperationException("TargetDeclination has not been set.");
+                if (isParked) throw new ParkedException("The mount is parked.");
                 return targetDeclination;
             }
             set
