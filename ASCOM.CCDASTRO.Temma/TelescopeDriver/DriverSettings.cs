@@ -11,6 +11,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
         EM200,
         EM200M,
         NJP,
+        EM400,
         EM500
     }
 
