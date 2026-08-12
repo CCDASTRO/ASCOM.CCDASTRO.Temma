@@ -2,7 +2,7 @@
 
 An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The driver is a C# local COM server that retains the native Temma serial protocol while replacing the original VB6/ActiveX implementation.
 
-Current version: **1.0.28**
+Current version: **1.0.29**
 
 ## What it supports
 
@@ -17,7 +17,7 @@ Current version: **1.0.28**
 - Multi-client ASCOM local-server operation and optional diagnostic logging
 - Pulseguiding
 
-Supported mount selections include EM-11, EM-11 Temma 2M, EM-200, EM-200 Temma 2M, NJP, and EM-500.
+Supported mount selections include EM-11, EM-11 Temma 2M, EM-200, EM-200 Temma 2M, NJP, EM-400, and EM-500.
 
 ## Requirements
 
@@ -123,6 +123,8 @@ The driver follows the Temma command/reply model:
 Slew completion is determined from observed settled mount motion rather than requiring an unrealistically exact target-coordinate match. This matches the proven behavior of the original VB6 driver and accommodates normal encoder resolution and pointing error.
 
 ## Validation status
+
+Version 1.0.29 adds a dedicated EM-400 selection with maximum slew rates of 250x sidereal at 12V and 500x at 24V.
 
 Version 1.0.28 supports simultaneous RA and Declination PulseGuide operations with coordinated Temma stop/restart handling and independent per-axis pulse state. Version 1.0.27 resets target-coordinate first-use state after every successful client connection, including automatic unpark initialization, and logs target initialization state for diagnostics. Version 1.0.26 returns ASCOM-specific invalid-operation exceptions when target coordinates are read before being set. Version 1.0.25 retains usable MoveAxis slew rates when a guide rate is set to zero and gives ASCOM's unset-target error precedence while parked. Version 1.0.24 accepts the Temma's full 0% to 99% programmable guide-rate range and preserves ASCOM's unset target-coordinate state while restoring a parked coordinate cache. Version 1.0.23 improves ASCOM Conform behavior with standards-compliant property validation and exceptions, target-coordinate initialization, axis-rate reporting, side-of-pier prediction, and asynchronous pulse guiding. Version 1.0.22 queries and programs the Temma's adjustable RA and Declination correction speeds through the `la`/`lb` and `LA`/`LB` commands, converting correctly between the mount's percentage-of-sidereal representation and ASCOM degrees per second. Version 1.0.21 added reference-counted, serialized sharing of one physical Temma connection across multiple ASCOM clients. Version 1.0.20 was exercised with a real Temma mount for connection, OTA-East initialization, sync, repeated GOTO slews, slew completion, and abort behavior. Counterweight-reference and park/unpark/reconnect behavior were also verified with the companion Temma simulator.
 

@@ -540,6 +540,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
                 case TemmaMountModel.NJP:
                     return ShouldUseHighSpeed() ? 350.0 : 175.0;
 
+                case TemmaMountModel.EM400:
+                    return ShouldUseHighSpeed() ? 500.0 : 250.0;
+
                 case TemmaMountModel.EM500:
                     return ShouldUseHighSpeed() ? 520.0 : 260.0;
 
