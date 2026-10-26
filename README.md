@@ -2,7 +2,7 @@
 
 An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The driver is a C# local COM server that retains the native Temma serial protocol while replacing the original VB6/ActiveX implementation.
 
-Current version: **1.0.29**
+Current version: **1.0.29** Installer download link - <https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.29/CCDASTRO.Temma.Setup.exe>
 
 ## What it supports
 
