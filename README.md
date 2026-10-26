@@ -2,7 +2,9 @@
 
 An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The driver is a C# local COM server that retains the native Temma serial protocol while replacing the original VB6/ActiveX implementation.
 
-Current version: **1.0.29** Installer download link - <https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.29/CCDASTRO.Temma.Setup.exe>
+Current version: **1.0.30**
+
+[Download the Windows installer](https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.30/CCDASTRO.Temma.Setup.exe)
 
 ## What it supports
 
@@ -100,6 +102,14 @@ ASCOM.CCDASTROTemma.exe /unregserver
 
 Do not use `RegAsm` for this local-server executable.
 
+## Building the installer
+
+After building the Release configuration, compile `installer/Temma.iss` with Inno Setup 6. The ASCOM Developer installer resources must be installed; their location can also be supplied with `/DAscomResources="path"`. The driver-only installer is written to `dist/CCDASTRO.Temma.Setup.exe`. It registers the ASCOM driver during installation and unregisters it during removal.
+
+```powershell
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Temma.iss
+```
+
 ## Diagnostic logging
 
 Enable tracing in the driver Setup dialog when diagnosing a connection or protocol issue. ASCOM logs capture serial transmit/receive traffic, initialization, sync, slew verification, park, and unpark activity.
@@ -123,6 +133,8 @@ The driver follows the Temma command/reply model:
 Slew completion is determined from observed settled mount motion rather than requiring an unrealistically exact target-coordinate match. This matches the proven behavior of the original VB6 driver and accommodates normal encoder resolution and pointing error.
 
 ## Validation status
+
+Version 1.0.30 switches to a driver-only installer and adds its build script to the repository. Telescope-control behavior is unchanged.
 
 Version 1.0.29 adds a dedicated EM-400 selection with maximum slew rates of 250x sidereal at 12V and 500x at 24V.
 
