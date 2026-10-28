@@ -104,7 +104,7 @@ Do not use `RegAsm` for this local-server executable.
 
 ## Building the installer
 
-After building the Release configuration, compile `installer/Temma.iss` with Inno Setup 6. The ASCOM Developer installer resources must be installed; their location can also be supplied with `/DAscomResources="path"`. The driver-only installer is written to `dist/CCDASTRO.Temma.Setup.exe`. It registers the ASCOM driver during installation and unregisters it during removal.
+After building the Release configuration, compile `installer/Temma.iss` with Inno Setup 6. The ASCOM Developer installer resources must be installed; their location can also be supplied with `/DAscomResources="path"`. Payload and internal installer compression are disabled to reduce antivirus false-positive detections. The driver-only installer is written to `dist/CCDASTRO.Temma.Setup.exe`. It registers the ASCOM driver during installation and unregisters it during removal.
 
 ```powershell
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Temma.iss

@@ -1,4 +1,4 @@
-﻿; Driver-only ASCOM Temma installer. Build the Release driver before compiling.
+; Driver-only ASCOM Temma installer. Build the Release driver before compiling.
 #define AppVersion "1.0.30"
 #define DriverExe SourcePath + "..\ASCOM.CCDASTRO.Temma\bin\Release\ASCOM.CCDASTROTemma.exe"
 #ifndef AscomResources
@@ -21,8 +21,9 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=CCDASTRO.Temma.Setup
-Compression=lzma
-SolidCompression=yes
+Compression=none
+InternalCompressLevel=none
+SolidCompression=no
 WizardImageFile={#AscomResources}\WizardImage.bmp
 LicenseFile={#AscomResources}\CreativeCommons.txt
 UninstallFilesDir="{cf}\ASCOM\Uninstall\Telescope\CCDASTRO Temma"
