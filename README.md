@@ -4,7 +4,7 @@ An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The
 
 Current version: **1.0.30**
 
-[Download the Windows installer](https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.30/CCDASTRO.Temma.Setup.exe)
+[Download the Windows installer](https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.30/CCDASTRO.Temma.Setup.msi)
 
 ## What it supports
 
@@ -102,13 +102,21 @@ ASCOM.CCDASTROTemma.exe /unregserver
 
 Do not use `RegAsm` for this local-server executable.
 
+## Installing or updating
+
+Download `CCDASTRO.Temma.Setup.msi`, close N.I.N.A. and other ASCOM clients, and run the installer. It registers the driver automatically; administrator approval is required.
+
+Before switching from an older EXE installer or a preview MSI, uninstall the previous Temma driver through Windows Installed Apps or Control Panel. This package does not migrate an existing installation automatically. Uninstall removes COM registration and program files while preserving ASCOM settings. The saved driver listing may remain in clients after uninstall; it becomes usable again after reinstall.
+
 ## Building the installer
 
-After building the Release configuration, compile `installer/Temma.iss` with Inno Setup 6. The ASCOM Developer installer resources must be installed; their location can also be supplied with `/DAscomResources="path"`. Payload and internal installer compression are disabled to reduce antivirus false-positive detections. The driver-only installer is written to `dist/CCDASTRO.Temma.Setup.exe`. It registers the ASCOM driver during installation and unregisters it during removal.
+Build the driver in Release configuration, then use PowerShell 7 and Advanced Installer Freeware (validated with 24.1):
 
 ```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Temma.iss
+pwsh -File installer/build-msi.ps1 -AdvancedInstaller "C:\Program Files (x86)\Caphyon\Advanced Installer 24.1\bin\x86\AdvancedInstaller.com"
 ```
+
+`installer/Temma.aip` builds the base MSI. The script adds the ASCOM prerequisite search, registration/unregistration actions and rollback actions using the Windows Installer API. Output: `dist/CCDASTRO.Temma.Setup.msi`. The legacy Inno Setup script remains for reference; the MSI is the current release installer.
 
 ## Diagnostic logging
 
@@ -134,7 +142,7 @@ Slew completion is determined from observed settled mount motion rather than req
 
 ## Validation status
 
-Version 1.0.30 switches to a driver-only installer and adds its build script to the repository. Telescope-control behavior is unchanged.
+Version 1.0.30 now ships as a Windows Installer MSI with automatic registration and corrected unregistration. Installation and loading in N.I.N.A. were confirmed during MSI testing; the user also confirmed the corrected package worked after stale-registration recovery. The release package removes preview branding and uses a release installation directory. Telescope-control behavior and the driver executable are unchanged. Antivirus results apply to individual file hashes; earlier preview scans do not certify this rebuilt release package.
 
 Version 1.0.29 adds a dedicated EM-400 selection with maximum slew rates of 250x sidereal at 12V and 500x at 24V.
 
