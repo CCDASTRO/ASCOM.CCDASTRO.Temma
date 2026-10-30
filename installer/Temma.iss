@@ -1,5 +1,5 @@
 ; Driver-only ASCOM Temma installer. Build the Release driver before compiling.
-#define AppVersion "1.0.30"
+#define AppVersion "1.0.31"
 #define DriverExe SourcePath + "..\ASCOM.CCDASTRO.Temma\bin\Release\ASCOM.CCDASTROTemma.exe"
 #ifndef AscomResources
   #define AscomResources GetEnv("ProgramFiles(x86)") + "\ASCOM\Developer\Installer Generator\Resources"

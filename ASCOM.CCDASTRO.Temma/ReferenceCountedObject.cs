@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace ASCOM.LocalServer
 {
@@ -8,6 +9,14 @@ namespace ASCOM.LocalServer
     [ComVisible(false)]
     public class ReferenceCountedObjectBase
     {
+        private int serverReferenceReleased;
+
+        protected void ReleaseServerReference()
+        {
+            if (Interlocked.Exchange(ref serverReferenceReleased, 1) != 0) return;
+            Server.DecrementObjectCount();
+            Server.ExitIf();
+        }
         /// <summary>
         /// Called every time a driver instance is created
         /// </summary>
@@ -23,11 +32,7 @@ namespace ASCOM.LocalServer
         ~ReferenceCountedObjectBase()
         {
             // We decrement the global count of objects.
-            Server.DecrementObjectCount();
-
-            // We then immediately test to see if we the conditions
-            // are right to attempt to terminate this server application.
-            Server.ExitIf();
+            ReleaseServerReference();
         }
     }
 }

@@ -2,9 +2,9 @@
 
 An ASCOM telescope driver for Takahashi Temma and Temma 2 equatorial mounts. The driver is a C# local COM server that retains the native Temma serial protocol while replacing the original VB6/ActiveX implementation.
 
-Current version: **1.0.30**
+Current version: **1.0.31**
 
-[Download the Windows installer](https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.30/CCDASTRO.Temma.Setup.msi)
+[Download the Windows installer](https://github.com/CCDASTRO/ASCOM.CCDASTRO.Temma/releases/download/v1.0.31/CCDASTRO.Temma.Setup.msi)
 
 ## What it supports
 
@@ -140,7 +140,18 @@ The driver follows the Temma command/reply model:
 
 Slew completion is determined from observed settled mount motion rather than requiring an unrealistically exact target-coordinate match. This matches the proven behavior of the original VB6 driver and accommodates normal encoder resolution and pointing error.
 
+## Changes in 1.0.31
+
+- Fixes a client-polling-order defect that could leave the driver reporting Slewing after the mount stopped and prevent a second GOTO. Every fresh coordinate sample now advances completion detection; an active slew is also polled independently of client property reads.
+- A GOTO requested while the previous slew remains active now reports an ASCOM error instead of silently returning.
+- Disposing one driver object no longer exits the shared COM server. Each object releases its server reference once, preserving other clients.
+- Retains the existing coordinate-settling approach; no new mount-status command is introduced without hardware verification.
+
+Uninstall the previous Temma driver before installing this MSI. ASCOM settings are preserved. Close all astronomy clients before updating.
+
 ## Validation status
+
+Version 1.0.31 builds successfully in Release/x86. Automated checks exercise fresh versus cached coordinate samples, client polling order, moving/settled states, repeated slew completion, busy-GOTO reporting and shared-server reference lifetime. These are software regression checks, not a physical mount test. Mark's reported mount session and N.I.N.A. setup issue still need confirmation with the new build. Enable Trace Logging and include `ASCOM.Temma.Driver...txt` files when reporting results.
 
 Version 1.0.30 now ships as a Windows Installer MSI with automatic registration and corrected unregistration. Installation and loading in N.I.N.A. were confirmed during MSI testing; the user also confirmed the corrected package worked after stale-registration recovery. The release package removes preview branding and uses a release installation directory. Telescope-control behavior and the driver executable are unchanged. Antivirus results apply to individual file hashes; earlier preview scans do not certify this rebuilt release package.
 

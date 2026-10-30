@@ -1,4 +1,4 @@
-﻿// Updated to resolve:
+// Updated to resolve:
 // - AxisRates.Add() compile error
 // - AxisRates constructor requiring TelescopeAxes
 // - TemmaMountModel enum integration
@@ -33,7 +33,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private bool connectedState;
         private bool connectionInitializing;
         private bool disposedValue;
-        private bool isSlewing;
+        private volatile bool isSlewing;
+        private readonly object coordinateUpdateLock = new object();
         private bool tracking;
         private bool isParked;
         private volatile bool pulseGuiding;
@@ -57,8 +58,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
         private const double SlewStartDecMovementThresholdDegrees = 0.002;
 
         // Temma does not provide a reliable, universal end-of-GOTO response.
-        // Match the proven VB6 driver's approach: after movement has been
-        // confirmed, completion is based on the mount settling rather than on
+        // Use coordinate settling as a firmware-compatible fallback. The VB6
+        // driver additionally queried lowercase s; this port does not yet rely on it.
+        // After movement is confirmed, completion is based on settling rather than on
         // an unrealistically exact match to the requested coordinates.
         private readonly object slewCompletionLock = new object();
         private const double SlewCompletionRaMotionThresholdHours = 0.001;
@@ -141,8 +143,9 @@ namespace ASCOM.CCDASTROTemma.Telescope
             Dispose(true);
             GC.SuppressFinalize(this);
 
-            Server.ExitIf();
-            Application.Exit();
+            // One client releasing its object must not terminate other clients.
+            // Explicit disposal suppresses finalization, so release our count here.
+            ReleaseServerReference();
         }
 
         protected virtual void Dispose(bool disposing)
@@ -151,6 +154,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
             if (disposing)
             {
+                CancelSlewStartVerification();
+                lock (coordinateUpdateLock) { isSlewing = false; }
                 if (connectedState)
                 {
                     try
@@ -312,8 +317,7 @@ namespace ASCOM.CCDASTROTemma.Telescope
             {
                 if (isSlewing)
                 {
-                    if (UpdateCoordinates())
-                        UpdateSlewCompletionState();
+                    UpdateCoordinates();
                 }
 
                 return isSlewing;
@@ -419,7 +423,15 @@ namespace ASCOM.CCDASTROTemma.Telescope
         {
             CheckConnected("SlewToCoordinatesAsync");
             if (isParked) throw new ParkedException("The mount is parked.");
-            if (isSlewing) return;
+            if (isSlewing)
+            {
+                UpdateCoordinates();
+                if (isSlewing)
+                {
+                    LogMessage("SlewRejected", "A GOTO was requested while the previous slew is still active.");
+                    throw new ASCOM.InvalidOperationException("The previous slew is still in progress. Wait for completion or abort it before requesting another GOTO.");
+                }
+            }
             if (rightAscension < 0.0 || rightAscension > 24.0)
                 throw new InvalidValueException("RightAscension", rightAscension.ToString(), "0 to 24 hours");
             if (declination < -90.0 || declination > 90.0)
@@ -761,34 +773,46 @@ namespace ASCOM.CCDASTROTemma.Telescope
 
         private bool UpdateCoordinates()
         {
-            if (!connectedState) return false;
-            // Park is an ASCOM driver-side state for Temma. While parked,
-            // expose the stored physical park position rather than an
-            // arbitrary raw E response after a mount power cycle.
-            if (isParked) return false;
-            if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0) return false;
-
-            try
+            lock (coordinateUpdateLock)
             {
-                string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
+                if (disposedValue) return false;
+                if (!connectedState) return false;
+                // Park is an ASCOM driver-side state for Temma. While parked,
+                // expose the stored physical park position rather than an
+                // arbitrary raw E response after a mount power cycle.
+                if (isParked) return false;
+                if ((DateTime.UtcNow - lastCoordinateUpdate).TotalSeconds < 1.0) return false;
 
-                double ra;
-                double dec;
-
-                if (TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
+                try
                 {
-                    currentRightAscension = ra;
-                    currentDeclination = dec;
-                    lastCoordinateUpdate = DateTime.UtcNow;
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage("UpdateCoordinates", ex.Message);
-            }
+                    string response = SendCommand(TemmaProtocol.BuildCoordinateQueryCommand());
 
-            return false;
+                    double ra;
+                    double dec;
+
+                    if (TemmaProtocol.TryParseCoordinates(response, out ra, out dec))
+                    {
+                        AcceptCoordinateSample(ra, dec);
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage("UpdateCoordinates", ex.Message);
+                }
+
+                return false;
+            }
+        }
+
+        private void AcceptCoordinateSample(double ra, double dec)
+        {
+            currentRightAscension = ra;
+            currentDeclination = dec;
+            lastCoordinateUpdate = DateTime.UtcNow;
+            // Every fresh sample advances completion, including RA/DEC reads.
+            // Cached reads must never be counted as new evidence of settling.
+            if (isSlewing) UpdateSlewCompletionState();
         }
 
         #endregion
@@ -937,6 +961,8 @@ namespace ASCOM.CCDASTROTemma.Telescope
                     if (!IsSlewVerificationCurrent(generation) || !Connected || isParked || !isSlewing)
                         return;
 
+                    UpdateCoordinates();
+
                     double raMoved = Math.Abs(currentRightAscension - startRa);
                     if (raMoved > 12.0) raMoved = 24.0 - raMoved;
                     double decMoved = Math.Abs(currentDeclination - startDec);
@@ -948,6 +974,13 @@ namespace ASCOM.CCDASTROTemma.Telescope
                             "Mount movement confirmed on attempt {0}. RA moved {1:F6} h, Dec moved {2:F6} deg.",
                             attempt, raMoved, decMoved));
                         ConfirmSlewStarted();
+                        // Continue polling independently of the client's property order.
+                        while (IsSlewVerificationCurrent(generation) && Connected && !isParked && isSlewing)
+                        {
+                            await Task.Delay(1000).ConfigureAwait(false);
+                            if (!IsSlewVerificationCurrent(generation) || !Connected || isParked || !isSlewing) return;
+                            UpdateCoordinates();
+                        }
                         return;
                     }
 

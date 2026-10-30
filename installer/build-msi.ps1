@@ -22,7 +22,7 @@ function EnsureTable([string]$name, [string]$ddl) {
 }
 try {
     # Release product identity; previous installers must be removed first.
-    Sql "UPDATE ``Property`` SET ``Value``='{D50F8511-728B-4601-9880-BAB73616FC62}' WHERE ``Property``='ProductCode'"
+    Sql "UPDATE ``Property`` SET ``Value``='{816CC035-667F-4C7B-8A43-DF5B512BD860}' WHERE ``Property``='ProductCode'"
     Sql "UPDATE ``Property`` SET ``Value``='{5CC1980C-D242-4305-8245-AB3D68DC08ED}' WHERE ``Property``='UpgradeCode'"
     Sql "UPDATE ``Property`` SET ``Value``='CCDASTRO Temma Mount Driver' WHERE ``Property``='ProductName'"
     Sql "UPDATE ``CustomAction`` SET ``Target``='[CommonFilesFolder]ASCOM\Telescope\Temma' WHERE ``Action``='SET_APPDIR'"

@@ -12,7 +12,7 @@
     <ROW Property="ProductCode" Value="1033:{1FA7C474-A40E-40E3-9F18-F45DFE6C7814} " Type="16"/>
     <ROW Property="ProductLanguage" Value="1033"/>
     <ROW Property="ProductName" Value="CCDASTRO Temma Mount Driver"/>
-    <ROW Property="ProductVersion" Value="1.0.30" Options="32"/>
+    <ROW Property="ProductVersion" Value="1.0.31" Options="32"/>
     <ROW Property="SecureCustomProperties" Value="OLDPRODUCTS;AI_NEWERPRODUCTFOUND"/>
     <ROW Property="UpgradeCode" Value="{1CE86169-338C-4605-B9AD-6D3D7594F087}"/>
     <ROW Property="WindowsType9X" MultiBuildValue="DefaultBuild:Windows 9x/ME" ValueLocId="-"/>
